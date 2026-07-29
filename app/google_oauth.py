@@ -1,8 +1,14 @@
 import os
+from datetime import datetime, timezone
 
+from google.auth.transport import requests as google_requests
+from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
+from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.models import User
+from app.security import decrypt_token
 
 # oauthlib raises a hard exception whenever the granted scope string differs at all
 # from what was requested — including harmless reordering/reformatting, which Google
@@ -33,3 +39,37 @@ def build_flow(code_verifier: str | None = None) -> Flow:
         redirect_uri=settings.google_redirect_uri,
         code_verifier=code_verifier,
     )
+
+
+def _is_expired(expires_at: datetime | None) -> bool:
+    if expires_at is None:
+        return True
+    # access_token_expires_at is stored as a naive UTC datetime (that's what
+    # google-auth's credentials.expiry gives us), so "now" has to be naive UTC
+    # too — comparing naive to timezone-aware datetimes raises a TypeError.
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    return expires_at <= now
+
+
+def get_user_credentials(user: User, db: Session) -> Credentials:
+    """Build a valid, per-user Google API client credential, refreshing it first if needed.
+
+    CalendarService never sees how this credential was obtained or kept alive —
+    it only ever receives one that already works.
+    """
+    credentials = Credentials(
+        token=user.access_token,
+        refresh_token=decrypt_token(user.encrypted_refresh_token),
+        token_uri="https://oauth2.googleapis.com/token",
+        client_id=settings.google_client_id,
+        client_secret=settings.google_client_secret,
+        scopes=SCOPES,
+    )
+
+    if _is_expired(user.access_token_expires_at):
+        credentials.refresh(google_requests.Request())
+        user.access_token = credentials.token
+        user.access_token_expires_at = credentials.expiry
+        db.commit()
+
+    return credentials
