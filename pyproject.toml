@@ -1,0 +1,15 @@
+[project]
+name = "calendar-api"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.12"
+dependencies = [
+    "cryptography>=49.0.0",
+    "fastapi>=0.141.1",
+    "google-auth>=2.56.2",
+    "google-auth-oauthlib>=1.4.0",
+    "pydantic-settings>=2.14.2",
+    "pyjwt>=2.13.0",
+    "sqlalchemy>=2.0.51",
+    "uvicorn[standard]>=0.52.0",
+]

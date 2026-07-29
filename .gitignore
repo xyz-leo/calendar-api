@@ -1,0 +1,20 @@
+claude.md
+tmp/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Secrets / local config
+.env
+
+# SQLite database
+*.db
+*.db-journal
+/data/*
+!/data/.gitkeep
+
+# Caches
+.pytest_cache/
+.ruff_cache/
