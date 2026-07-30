@@ -23,11 +23,16 @@ class EventInput(BaseModel):
     recurrence: list[str] | None = None
 
     @model_validator(mode="after")
-    def _default_end(self) -> "EventInput":
+    def _validate_end(self) -> "EventInput":
         if self.end is None:
             if isinstance(self.start, datetime):
                 raise ValueError("end is required for timed events (only all-day events can omit it)")
             self.end = self.start + timedelta(days=1)
+        elif isinstance(self.start, datetime) != isinstance(self.end, datetime):
+            raise ValueError("start and end must both be dates (all-day) or both be datetimes (timed), not mixed")
+
+        if self.end <= self.start:
+            raise ValueError("end must be after start")
         return self
 
     @property
@@ -47,11 +52,17 @@ class EventInput(BaseModel):
 
         payload = {
             "summary": self.summary,
-            "description": self.description,
-            "location": self.location,
             "start": start_field,
             "end": end_field,
         }
+        # description/location/recurrence are only included when actually provided —
+        # Google's PATCH applies each key it receives literally, including an explicit
+        # null. Always sending "description": None on an update that never mentioned
+        # description would silently WIPE an existing description on Google's side.
+        if self.description is not None:
+            payload["description"] = self.description
+        if self.location is not None:
+            payload["location"] = self.location
         if self.recurrence:
             payload["recurrence"] = self.recurrence
         return payload

@@ -1,6 +1,9 @@
 import os
 from datetime import datetime, timezone
 
+from cryptography.fernet import InvalidToken
+from fastapi import HTTPException
+from google.auth.exceptions import RefreshError
 from google.auth.transport import requests as google_requests
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
@@ -9,6 +12,8 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.models import User
 from app.security import decrypt_token
+
+GOOGLE_ACCESS_LOST_DETAIL = "Google access expired or was revoked — log in with Google again."
 
 # oauthlib raises a hard exception whenever the granted scope string differs at all
 # from what was requested — including harmless reordering/reformatting, which Google
@@ -57,9 +62,17 @@ def get_user_credentials(user: User, db: Session) -> Credentials:
     CalendarService never sees how this credential was obtained or kept alive —
     it only ever receives one that already works.
     """
+    try:
+        refresh_token = decrypt_token(user.encrypted_refresh_token)
+    except InvalidToken:
+        # Raised on an empty/blank string too, not just a corrupt one — this is
+        # exactly the state logout leaves a user in (encrypted_refresh_token is
+        # wiped to ""), so this is the expected, everyday way to reach this path.
+        raise HTTPException(status_code=401, detail=GOOGLE_ACCESS_LOST_DETAIL)
+
     credentials = Credentials(
         token=user.access_token,
-        refresh_token=decrypt_token(user.encrypted_refresh_token),
+        refresh_token=refresh_token,
         token_uri="https://oauth2.googleapis.com/token",
         client_id=settings.google_client_id,
         client_secret=settings.google_client_secret,
@@ -67,7 +80,13 @@ def get_user_credentials(user: User, db: Session) -> Credentials:
     )
 
     if _is_expired(user.access_token_expires_at):
-        credentials.refresh(google_requests.Request())
+        try:
+            credentials.refresh(google_requests.Request())
+        except RefreshError:
+            # The refresh_token itself is no longer honored by Google — e.g. the
+            # 7-day expiry in Testing mode, or the user revoked access directly
+            # at myaccount.google.com/permissions.
+            raise HTTPException(status_code=401, detail=GOOGLE_ACCESS_LOST_DETAIL)
         user.access_token = credentials.token
         user.access_token_expires_at = credentials.expiry
         db.commit()

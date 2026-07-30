@@ -1,7 +1,8 @@
 from datetime import date, datetime
 
-from fastapi import Depends
+from fastapi import Depends, HTTPException
 from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
@@ -12,47 +13,61 @@ from app.schemas import Event, EventInput
 
 CALENDAR_ID = "primary"
 
+# Google's HttpError carries a real, meaningful status — pass the common ones
+# through as-is instead of letting every Google hiccup surface as a generic 500.
+_STATUS_DETAIL = {
+    404: "Event not found",
+    403: "Google denied this request (check the granted scope/permissions)",
+    401: "Google access expired or was revoked — log in with Google again",
+}
+
+
+def _execute(request):
+    try:
+        return request.execute()
+    except HttpError as e:
+        status = e.resp.status
+        raise HTTPException(
+            status_code=status if status in _STATUS_DETAIL else 502,
+            detail=_STATUS_DETAIL.get(status, f"Google Calendar API error ({status})"),
+        )
+
 
 class CalendarService:
     def __init__(self, google_client):
         self.google_client = google_client
 
     def list_events(self) -> list[Event]:
-        raw = (
+        raw = _execute(
             self.google_client.events()
             .list(calendarId=CALENDAR_ID, singleEvents=True, orderBy="startTime")
-            .execute()
         )
         return [self._normalize(e) for e in raw.get("items", [])]
 
     def get_event(self, event_id: str) -> Event:
-        raw = (
-            self.google_client.events()
-            .get(calendarId=CALENDAR_ID, eventId=event_id)
-            .execute()
+        raw = _execute(
+            self.google_client.events().get(calendarId=CALENDAR_ID, eventId=event_id)
         )
         return self._normalize(raw)
 
     def create_event(self, event: EventInput) -> Event:
-        raw = (
+        raw = _execute(
             self.google_client.events()
             .insert(calendarId=CALENDAR_ID, body=event.to_google_payload())
-            .execute()
         )
         return self._normalize(raw)
 
     def update_event(self, event_id: str, event: EventInput) -> Event:
-        raw = (
+        raw = _execute(
             self.google_client.events()
             .patch(calendarId=CALENDAR_ID, eventId=event_id, body=event.to_google_payload())
-            .execute()
         )
         return self._normalize(raw)
 
     def delete_event(self, event_id: str) -> None:
-        self.google_client.events().delete(
-            calendarId=CALENDAR_ID, eventId=event_id
-        ).execute()
+        _execute(
+            self.google_client.events().delete(calendarId=CALENDAR_ID, eventId=event_id)
+        )
 
     def _normalize(self, raw: dict) -> Event:
         # All-day events (e.g. birthdays, holidays) are represented by Google with a
