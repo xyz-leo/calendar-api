@@ -20,90 +20,102 @@ usage() {
 Usage: $name <command> [args]
 
 Commands:
-  token                                     mint and cache a fresh JWT for the logged-in user
-  list                                      list events            (GET  /events)
-  get    <event_id>                         fetch one event        (GET  /events/{id})
-  create <summary> <start> <end> [tz] [rrule]       create an event        (POST /events)
-  update <event_id> <summary> <start> <end> [tz] [rrule]   update an event (PATCH /events/{id})
-  delete <event_id>                         delete an event        (DELETE /events/{id})
+  token                       mint and cache a fresh JWT
+  logout                      end session server-side (kills all tokens + Google access)
+  list                        list events
+  get    <event_id>           fetch one event
+  create [flags]              create an event
+  update <event_id> [flags]   update an event
+  delete <event_id>           delete an event
 
-<start>/<end> are ISO datetimes without offset, e.g. 2026-08-15T14:00:00
-[tz] is an IANA timezone name (e.g. America/Sao_Paulo, Europe/Lisbon, UTC).
-      Defaults to UTC if omitted.
-[rrule] is a single RFC 5545 recurrence rule, e.g. "RRULE:FREQ=WEEKLY;COUNT=5".
-      See docs/rfc5545.md for how to write these. Omit for a one-off event.
-      To set [rrule] you must also pass [tz] (use UTC as a placeholder if needed).
+Flags (create/update, any order):
+  --summary <text>        required
+  --start <date|datetime> required
+  --end <date|datetime>   required for timed events; optional for all-day (defaults
+                           to start+1 day — Google's all-day "end" is exclusive)
+  --description <text>
+  --location <text>
+  --timezone <tz>         default UTC, e.g. America/Sao_Paulo (ignored for all-day)
+  --rrule <rule>          RFC 5545 rule, see docs/rfc5545.md
 
-Full worked examples (run them in this order to see the whole lifecycle):
+Bare date ("2026-08-15") = all-day event. Full timestamp ("2026-08-15T14:00:00") = timed.
 
-  # 1. Get a token first — every other command needs one cached.
+Examples:
+
   $name token
-
-  # 2. List whatever's currently on the calendar (starts empty).
   $name list
 
-  # 3. Create an event. summary is one argument, so quote it if it has spaces.
-  $name create "Dentist appointment" "2026-09-01T14:00:00" "2026-09-01T15:00:00" "America/Sao_Paulo"
-  #   -> prints the created event's JSON, including its "id" — copy that id
-  #      for the next steps. Example id used below: abc123
+  # All-day, one day (end auto-computed)
+  $name create --summary "Team offsite" --start 2026-09-01 --description "Planning day"
 
-  # 4. Fetch that one event by the id you got back from create.
-  $name get abc123
+  # Timed event
+  $name create --summary "Dentist" --start 2026-09-01T14:00:00 --end 2026-09-01T15:00:00 \\
+      --timezone America/Sao_Paulo
 
-  # 5. Update it — same argument shape as create, plus the event id first.
-  $name update abc123 "Dentist appointment (rescheduled)" "2026-09-01T16:00:00" "2026-09-01T17:00:00" "America/Sao_Paulo"
+  # Recurring, weekly for 10 weeks
+  $name create --summary "Standup" --start 2026-08-03T09:00:00 --end 2026-08-03T09:15:00 \\
+      --timezone America/Sao_Paulo --rrule "RRULE:FREQ=WEEKLY;BYDAY=MO;COUNT=10"
 
-  # 6. Delete it. Prints "HTTP 204" on success.
-  $name delete abc123
+  $name get <event_id>
+  $name update <event_id> --summary "Renamed" --start 2026-09-01
+  $name delete <event_id>
+  $name logout
 
-  # 7. Confirm it's gone from the listing (a direct 'get' on it would still
-  #    work and show "status": "cancelled" — Google keeps a tombstone record,
-  #    it does not vanish from the API immediately).
-  $name list
-
-Recurring events (RFC 5545 rule as the last argument):
-
-  # Create a weekly standup, every Monday, 10 occurrences total.
-  $name create "Team standup" "2026-08-03T09:00:00" "2026-08-03T09:15:00" \\
-      "America/Sao_Paulo" "RRULE:FREQ=WEEKLY;BYDAY=MO;COUNT=10"
-
-  # 'list' expands the series into individual occurrences, each with its own
-  # id and a "recurring_event_id" pointing back to the series.
-  $name list
-
-  # Editing one occurrence's id only changes that single instance.
-  # Editing the series' own id (the first occurrence's recurring_event_id,
-  # or the id returned by 'create') changes the whole series going forward.
-  $name update <occurrence_id> "Team standup (moved)" "2026-08-04T09:00:00" "2026-08-04T09:15:00"
-
-See docs/rfc5545.md for the full RRULE syntax reference.
-
-If a request comes back 401, the cached token likely expired — run '$name token' again.
+Notes:
+  - Editing a recurring occurrence's own id changes just that instance; editing the
+    series id (the "recurring_event_id" on any occurrence) changes the whole series.
+  - Multi-day all-day events: pass --end explicitly (end is exclusive, so a 3-day
+    span starting D is --end D+3).
+  - Switching an event between all-day and timed via 'update' fails on Google's side
+    (400 "Invalid start time") — delete and recreate instead.
+  - 401? Run '$name token' again.
 EOF
     exit 1
 }
 
 mint_token() {
-    docker compose exec -T api sh -c '
+    # Which user gets a token: if exactly one row exists (true for a normal single-
+    # developer setup), that one — no guessing needed. If more than one exists, this
+    # refuses to pick arbitrarily; set CALCTL_USER_EMAIL to say which one you mean.
+    docker compose exec -T -e CALCTL_USER_EMAIL="${CALCTL_USER_EMAIL:-}" api sh -c '
         set -a
         . /app/data/.secrets.env
         set +a
         uv run python -c "
+import os
 from app.database import SessionLocal
 from app.models import User
 from app.security import create_access_token
+
 db = SessionLocal()
-user = db.query(User).first()
-if user is None:
-    raise SystemExit(\"No user found — log in through /auth/login in a browser first.\")
-print(create_access_token(user.id))
+email = os.environ.get(\"CALCTL_USER_EMAIL\")
+if email:
+    user = db.query(User).filter_by(email=email).first()
+    if user is None:
+        raise SystemExit(f\"No user with email {email!r} found.\")
+else:
+    users = db.query(User).all()
+    if not users:
+        raise SystemExit(\"No user found — log in through /auth/login in a browser first.\")
+    if len(users) > 1:
+        known = \", \".join(u.email for u in users)
+        raise SystemExit(
+            f\"Multiple users found ({known}) — set CALCTL_USER_EMAIL to pick one.\"
+        )
+    user = users[0]
+
+print(create_access_token(user.id, user.session_version))
 "
-    ' | tail -1 | tr -d '\r'
+    '
 }
 
 cmd_token() {
     mkdir -p "$(dirname "$TOKEN_FILE")"
-    token="$(mint_token)"
+    # Capturing via "$(...)" (not piping mint_token's output onward) is what makes
+    # its real exit code visible here — a pipe would only ever report the exit
+    # code of the LAST command in it (tail/tr), silently hiding a failure upstream.
+    output="$(mint_token)" || exit 1
+    token="$(echo "$output" | tail -1 | tr -d '\r')"
     echo "$token" > "$TOKEN_FILE"
     echo "Token cached at $TOKEN_FILE"
 }
@@ -123,16 +135,52 @@ pretty() {
     fi
 }
 
+# Parses --summary/--start/--end/--description/--location/--timezone/--rrule out
+# of "$@" into plain shell variables of the same name. Named flags instead of
+# positional arguments mean order never matters and nothing needs an empty ""
+# placeholder just to reach a later argument.
+parse_event_flags() {
+    summary=""
+    start=""
+    end=""
+    description=""
+    location=""
+    timezone="UTC"
+    rrule=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --summary)     summary="$2"; shift 2 ;;
+            --start)       start="$2"; shift 2 ;;
+            --end)         end="$2"; shift 2 ;;
+            --description) description="$2"; shift 2 ;;
+            --location)    location="$2"; shift 2 ;;
+            --timezone)    timezone="$2"; shift 2 ;;
+            --rrule)       rrule="$2"; shift 2 ;;
+            *) echo "Unknown flag: $1" >&2; usage ;;
+        esac
+    done
+    [ -n "$summary" ] || { echo "--summary is required" >&2; usage; }
+    [ -n "$start" ] || { echo "--start is required" >&2; usage; }
+}
+
 build_json() {
-    # build_json <summary> <start> <end> <timezone> [rrule]
+    # Reads the shell variables set by parse_event_flags — not passed as args,
+    # since there are now seven of them and passing that many positionally
+    # would just reintroduce the ordering problem this rewrite is fixing.
     python3 -c '
 import json, sys
-summary, start, end, tz = sys.argv[1:5]
-payload = {"summary": summary, "start": start, "end": end, "timezone": tz}
-if len(sys.argv) > 5 and sys.argv[5]:
-    payload["recurrence"] = [sys.argv[5]]
+summary, start, end, description, location, tz, rrule = sys.argv[1:8]
+payload = {"summary": summary, "start": start, "timezone": tz}
+if end:
+    payload["end"] = end
+if description:
+    payload["description"] = description
+if location:
+    payload["location"] = location
+if rrule:
+    payload["recurrence"] = [rrule]
 print(json.dumps(payload))
-' "$1" "$2" "$3" "$4" "${5:-}"
+' "$summary" "$start" "$end" "$description" "$location" "$timezone" "$rrule"
 }
 
 [ $# -ge 1 ] || usage
@@ -143,6 +191,11 @@ case "$command" in
     token)
         cmd_token
         ;;
+    logout)
+        curl -s -X POST "$BASE_URL/auth/logout" -H "Authorization: Bearer $(get_token)" | pretty
+        rm -f "$TOKEN_FILE"
+        echo "Cached token removed at $TOKEN_FILE"
+        ;;
     list)
         curl -s -H "Authorization: Bearer $(get_token)" "$BASE_URL/events" | pretty
         ;;
@@ -151,20 +204,20 @@ case "$command" in
         curl -s -H "Authorization: Bearer $(get_token)" "$BASE_URL/events/$1" | pretty
         ;;
     create)
-        [ $# -ge 3 ] || usage
-        summary="$1"; start="$2"; end="$3"; tz="${4:-UTC}"; rrule="${5:-}"
+        parse_event_flags "$@"
         curl -s -X POST "$BASE_URL/events" \
             -H "Authorization: Bearer $(get_token)" \
             -H "Content-Type: application/json" \
-            -d "$(build_json "$summary" "$start" "$end" "$tz" "$rrule")" | pretty
+            -d "$(build_json)" | pretty
         ;;
     update)
-        [ $# -ge 4 ] || usage
-        event_id="$1"; summary="$2"; start="$3"; end="$4"; tz="${5:-UTC}"; rrule="${6:-}"
+        [ $# -ge 1 ] || usage
+        event_id="$1"; shift
+        parse_event_flags "$@"
         curl -s -X PATCH "$BASE_URL/events/$event_id" \
             -H "Authorization: Bearer $(get_token)" \
             -H "Content-Type: application/json" \
-            -d "$(build_json "$summary" "$start" "$end" "$tz" "$rrule")" | pretty
+            -d "$(build_json)" | pretty
         ;;
     delete)
         [ $# -eq 1 ] || usage

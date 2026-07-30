@@ -11,9 +11,10 @@ JWT_LIFETIME = timedelta(hours=24)
 _fernet = Fernet(settings.token_encryption_key.encode())
 
 
-def create_access_token(user_id: int) -> str:
+def create_access_token(user_id: int, session_version: int) -> str:
     payload = {
         "sub": str(user_id),
+        "sv": session_version,
         "exp": datetime.now(timezone.utc) + JWT_LIFETIME,
     }
     return jwt.encode(payload, settings.jwt_secret, algorithm=JWT_ALGORITHM)

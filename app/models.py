@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, String
+from sqlalchemy import DateTime, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -20,3 +20,4 @@ class User(Base):
     access_token: Mapped[str] = mapped_column(String)
     access_token_expires_at: Mapped[datetime] = mapped_column(DateTime)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    session_version: Mapped[int] = mapped_column(Integer, default=0)

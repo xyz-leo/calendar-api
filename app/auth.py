@@ -83,16 +83,11 @@ def callback(
     db.commit()
     db.refresh(user)
 
-    access_token = create_access_token(user.id)
+    access_token = create_access_token(user.id, user.session_version)
     response = JSONResponse({"access_token": access_token, "token_type": "bearer"})
     response.delete_cookie(STATE_COOKIE)
     response.delete_cookie(CODE_VERIFIER_COOKIE)
     return response
-
-
-@router.post("/auth/logout")
-def logout() -> dict:
-    return {"detail": "Logged out. Discard the access token client-side."}
 
 
 def get_current_user(
@@ -110,7 +105,25 @@ def get_current_user(
     user = db.get(User, int(payload["sub"]))
     if user is None:
         raise HTTPException(status_code=401, detail="User not found")
+
+    # The token was signed with the session_version that was current at login time.
+    # If it no longer matches the user's current value, the session was logged out
+    # since this token was issued — reject it even though the signature is genuine.
+    if payload.get("sv") != user.session_version:
+        raise HTTPException(status_code=401, detail="Session has been logged out")
+
     return user
+
+
+@router.post("/auth/logout")
+def logout(
+    current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
+) -> dict:
+    current_user.session_version += 1
+    current_user.encrypted_refresh_token = ""
+    current_user.access_token = ""
+    db.commit()
+    return {"detail": "Logged out. This token and any other active session are now invalid."}
 
 
 @router.get("/me")
