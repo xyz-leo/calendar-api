@@ -1,0 +1,38 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Run tests
+        env:
+          # Dummy values, never used for anything real — the test suite never
+          # makes a real Google API call or touches a real database (see
+          # tmp/learning/09-automated-testing.md), so these only need to exist
+          # and satisfy app.config.Settings' validation at import time.
+          # TOKEN_ENCRYPTION_KEY specifically must still be a syntactically
+          # valid Fernet key (32 bytes, base64-urlsafe-encoded) even though it's
+          # never used to encrypt anything real here.
+          GOOGLE_CLIENT_ID: "dummy-client-id"
+          GOOGLE_CLIENT_SECRET: "dummy-client-secret"
+          GOOGLE_REDIRECT_URI: "http://localhost:8000/auth/callback"
+          DATABASE_URL: "sqlite:///:memory:"
+          JWT_SECRET: "dummy-jwt-secret-for-ci-only-32-bytes-min"
+          TOKEN_ENCRYPTION_KEY: "N-MSupqTL6X3lisME4Z4nkVg5agFJe5u1IWMj_sDSVw="
+        run: uv run python -m pytest -v

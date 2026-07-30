@@ -100,6 +100,25 @@ def test_create_event_sends_payload_and_normalizes_response():
     assert kwargs["body"]["summary"] == "Created"
 
 
+def test_create_event_passes_recurrence_through():
+    from app.schemas import EventInput
+
+    client = FakeGoogleClient()
+    client.queue("insert", result=raw_timed_event())
+    service = CalendarService(client)
+    event_in = EventInput(
+        summary="Standup",
+        start="2026-08-03T09:00:00",
+        end="2026-08-03T09:15:00",
+        recurrence=["RRULE:FREQ=WEEKLY;COUNT=10"],
+    )
+
+    service.create_event(event_in)
+
+    _, kwargs = client.calls[0]
+    assert kwargs["body"]["recurrence"] == ["RRULE:FREQ=WEEKLY;COUNT=10"]
+
+
 def test_delete_event_calls_google_with_right_id():
     client = FakeGoogleClient()
     client.queue("delete", result=None)
