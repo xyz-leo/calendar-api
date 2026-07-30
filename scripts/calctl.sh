@@ -23,13 +23,16 @@ Commands:
   token                                     mint and cache a fresh JWT for the logged-in user
   list                                      list events            (GET  /events)
   get    <event_id>                         fetch one event        (GET  /events/{id})
-  create <summary> <start> <end> [tz]       create an event        (POST /events)
-  update <event_id> <summary> <start> <end> [tz]   update an event (PATCH /events/{id})
+  create <summary> <start> <end> [tz] [rrule]       create an event        (POST /events)
+  update <event_id> <summary> <start> <end> [tz] [rrule]   update an event (PATCH /events/{id})
   delete <event_id>                         delete an event        (DELETE /events/{id})
 
 <start>/<end> are ISO datetimes without offset, e.g. 2026-08-15T14:00:00
 [tz] is an IANA timezone name (e.g. America/Sao_Paulo, Europe/Lisbon, UTC).
       Defaults to UTC if omitted.
+[rrule] is a single RFC 5545 recurrence rule, e.g. "RRULE:FREQ=WEEKLY;COUNT=5".
+      See docs/rfc5545.md for how to write these. Omit for a one-off event.
+      To set [rrule] you must also pass [tz] (use UTC as a placeholder if needed).
 
 Full worked examples (run them in this order to see the whole lifecycle):
 
@@ -57,6 +60,23 @@ Full worked examples (run them in this order to see the whole lifecycle):
   #    work and show "status": "cancelled" — Google keeps a tombstone record,
   #    it does not vanish from the API immediately).
   $name list
+
+Recurring events (RFC 5545 rule as the last argument):
+
+  # Create a weekly standup, every Monday, 10 occurrences total.
+  $name create "Team standup" "2026-08-03T09:00:00" "2026-08-03T09:15:00" \\
+      "America/Sao_Paulo" "RRULE:FREQ=WEEKLY;BYDAY=MO;COUNT=10"
+
+  # 'list' expands the series into individual occurrences, each with its own
+  # id and a "recurring_event_id" pointing back to the series.
+  $name list
+
+  # Editing one occurrence's id only changes that single instance.
+  # Editing the series' own id (the first occurrence's recurring_event_id,
+  # or the id returned by 'create') changes the whole series going forward.
+  $name update <occurrence_id> "Team standup (moved)" "2026-08-04T09:00:00" "2026-08-04T09:15:00"
+
+See docs/rfc5545.md for the full RRULE syntax reference.
 
 If a request comes back 401, the cached token likely expired — run '$name token' again.
 EOF
@@ -104,12 +124,15 @@ pretty() {
 }
 
 build_json() {
-    # build_json <summary> <start> <end> <timezone>
+    # build_json <summary> <start> <end> <timezone> [rrule]
     python3 -c '
 import json, sys
 summary, start, end, tz = sys.argv[1:5]
-print(json.dumps({"summary": summary, "start": start, "end": end, "timezone": tz}))
-' "$1" "$2" "$3" "$4"
+payload = {"summary": summary, "start": start, "end": end, "timezone": tz}
+if len(sys.argv) > 5 and sys.argv[5]:
+    payload["recurrence"] = [sys.argv[5]]
+print(json.dumps(payload))
+' "$1" "$2" "$3" "$4" "${5:-}"
 }
 
 [ $# -ge 1 ] || usage
@@ -129,19 +152,19 @@ case "$command" in
         ;;
     create)
         [ $# -ge 3 ] || usage
-        summary="$1"; start="$2"; end="$3"; tz="${4:-UTC}"
+        summary="$1"; start="$2"; end="$3"; tz="${4:-UTC}"; rrule="${5:-}"
         curl -s -X POST "$BASE_URL/events" \
             -H "Authorization: Bearer $(get_token)" \
             -H "Content-Type: application/json" \
-            -d "$(build_json "$summary" "$start" "$end" "$tz")" | pretty
+            -d "$(build_json "$summary" "$start" "$end" "$tz" "$rrule")" | pretty
         ;;
     update)
         [ $# -ge 4 ] || usage
-        event_id="$1"; summary="$2"; start="$3"; end="$4"; tz="${5:-UTC}"
+        event_id="$1"; summary="$2"; start="$3"; end="$4"; tz="${5:-UTC}"; rrule="${6:-}"
         curl -s -X PATCH "$BASE_URL/events/$event_id" \
             -H "Authorization: Bearer $(get_token)" \
             -H "Content-Type: application/json" \
-            -d "$(build_json "$summary" "$start" "$end" "$tz")" | pretty
+            -d "$(build_json "$summary" "$start" "$end" "$tz" "$rrule")" | pretty
         ;;
     delete)
         [ $# -eq 1 ] || usage

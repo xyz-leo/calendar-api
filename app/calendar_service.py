@@ -62,6 +62,8 @@ class CalendarService:
             end=raw["end"]["dateTime"],
             timezone=raw["start"].get("timeZone", "UTC"),
             status=raw.get("status", "confirmed"),
+            recurrence=raw.get("recurrence"),
+            recurring_event_id=raw.get("recurringEventId"),
         )
 
 
