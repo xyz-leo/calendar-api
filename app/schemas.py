@@ -1,26 +1,43 @@
 from datetime import date, datetime, timedelta
 
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, field_validator, model_validator
+
+
+def _classify_date_or_datetime(value):
+    # Explicit, not left to pydantic's own date|datetime union resolution: that
+    # was found to lenient-parse a full timestamp landing exactly at midnight
+    # (e.g. "2026-07-31T00:00:00") as a bare `date`, silently discarding the time
+    # and misclassifying a real timed event (one ending at midnight — a normal
+    # thing to want) as all-day. Deciding explicitly from the presence of a time
+    # separator, before pydantic ever sees the string, removes the ambiguity.
+    if isinstance(value, str):
+        if "T" in value or " " in value.strip():
+            return datetime.fromisoformat(value)
+        return date.fromisoformat(value)
+    return value
 
 
 class EventInput(BaseModel):
     summary: str
     description: str | None = None
     location: str | None = None
-    # Accepting date as well as datetime is what makes all-day events possible:
-    # pydantic only matches the `date` branch when the input has no time component
-    # at all (e.g. "2026-08-15") — a full timestamp always matches `datetime`
-    # instead. So "did the caller pass a bare date?" and "is this all-day?" are
-    # the same question, with no separate flag needed.
+    # Accepting date as well as datetime is what makes all-day events possible: a
+    # bare date (e.g. "2026-08-15") means all-day, a full timestamp means timed.
+    # See _classify_date_or_datetime above for how that's actually decided.
     start: date | datetime
     # Optional: for an all-day event, Google requires end = start + 1 day for a
     # single day (its "end" is exclusive) — that's an implementation detail of
     # Google's API, not something a caller should have to know or restate. If end
-    # is omitted for an all-day start, _default_end fills it in automatically.
+    # is omitted for an all-day start, _validate_end fills it in automatically.
     # Timed events still require an explicit end (a duration isn't derivable).
     end: date | datetime | None = None
     timezone: str = "UTC"
     recurrence: list[str] | None = None
+
+    @field_validator("start", "end", mode="before")
+    @classmethod
+    def _parse_start_end(cls, value):
+        return _classify_date_or_datetime(value)
 
     @model_validator(mode="after")
     def _validate_end(self) -> "EventInput":

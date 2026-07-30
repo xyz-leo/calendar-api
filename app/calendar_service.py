@@ -37,12 +37,26 @@ class CalendarService:
     def __init__(self, google_client):
         self.google_client = google_client
 
-    def list_events(self) -> list[Event]:
-        raw = _execute(
-            self.google_client.events()
-            .list(calendarId=CALENDAR_ID, singleEvents=True, orderBy="startTime")
-        )
-        return [self._normalize(e) for e in raw.get("items", [])]
+    def list_events(
+        self, time_min: datetime | None = None, time_max: datetime | None = None
+    ) -> list[Event]:
+        params = {"calendarId": CALENDAR_ID, "singleEvents": True, "orderBy": "startTime"}
+        if time_min is not None:
+            params["timeMin"] = time_min.isoformat()
+        if time_max is not None:
+            params["timeMax"] = time_max.isoformat()
+
+        events: list[Event] = []
+        page_token = None
+        while True:
+            if page_token:
+                params["pageToken"] = page_token
+            raw = _execute(self.google_client.events().list(**params))
+            events.extend(self._normalize(e) for e in raw.get("items", []))
+            page_token = raw.get("nextPageToken")
+            if not page_token:
+                break
+        return events
 
     def get_event(self, event_id: str) -> Event:
         raw = _execute(

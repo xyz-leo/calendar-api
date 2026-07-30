@@ -22,11 +22,16 @@ Usage: $name <command> [args]
 Commands:
   token                       mint and cache a fresh JWT
   logout                      end session server-side (kills all tokens + Google access)
-  list                        list events
+  list [--from|--to|--range]  list events (default: everything upcoming, no end cutoff)
   get    <event_id>           fetch one event
   create [flags]              create an event
   update <event_id> [flags]   update an event
   delete <event_id>           delete an event
+
+list flags:
+  --range today|week|month   shortcut, always relative to now
+  --from <date|datetime>     explicit start of range (can't combine with --range)
+  --to <date|datetime>       explicit end of range (can't combine with --range)
 
 Flags (create/update, any order):
   --summary <text>        required
@@ -43,7 +48,10 @@ Bare date ("2026-08-15") = all-day event. Full timestamp ("2026-08-15T14:00:00")
 Examples:
 
   $name token
-  $name list
+  $name list                    # everything upcoming
+  $name list --range today
+  $name list --range week
+  $name list --from 2026-09-01 --to 2026-09-30
 
   # All-day, one day (end auto-computed)
   $name create --summary "Team offsite" --start 2026-09-01 --description "Planning day"
@@ -68,6 +76,7 @@ Notes:
     span starting D is --end D+3).
   - Switching an event between all-day and timed via 'update' fails on Google's side
     (400 "Invalid start time") — delete and recreate instead.
+  - --from/--to with no timezone offset are assumed UTC.
   - 401? Run '$name token' again.
 EOF
     exit 1
@@ -197,7 +206,22 @@ case "$command" in
         echo "Cached token removed at $TOKEN_FILE"
         ;;
     list)
-        curl -s -H "Authorization: Bearer $(get_token)" "$BASE_URL/events" | pretty
+        from=""; to=""; range_=""
+        while [ $# -gt 0 ]; do
+            case "$1" in
+                --from)  from="$2"; shift 2 ;;
+                --to)    to="$2"; shift 2 ;;
+                --range) range_="$2"; shift 2 ;;
+                *) echo "Unknown flag: $1" >&2; usage ;;
+            esac
+        done
+        # -G + --data-urlencode builds the query string safely (handles ":", "+",
+        # etc. in timestamps) instead of concatenating an unescaped URL by hand.
+        set -- -s -G "$BASE_URL/events" -H "Authorization: Bearer $(get_token)"
+        [ -n "$from" ] && set -- "$@" --data-urlencode "from=$from"
+        [ -n "$to" ] && set -- "$@" --data-urlencode "to=$to"
+        [ -n "$range_" ] && set -- "$@" --data-urlencode "range=$range_"
+        curl "$@" | pretty
         ;;
     get)
         [ $# -eq 1 ] || usage

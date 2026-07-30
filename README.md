@@ -123,6 +123,23 @@ docker compose exec api uv add <package>
 docker compose up --build -d   # rebuild so the image picks it up
 ```
 
+### Running tests
+
+```bash
+docker compose exec api sh -c 'set -a; . /app/data/.secrets.env; set +a; uv run python -m pytest'
+```
+
+Sourcing `.secrets.env` first is only needed because `app.config.Settings` loads `JWT_SECRET`/
+`TOKEN_ENCRYPTION_KEY` at import time — the main server process already has them from
+`docker-entrypoint.sh`, but a one-off `exec` command doesn't inherit that unless you source the
+file yourself, same as `calctl.sh` already does. `set -a` before sourcing (and `set +a` after) is
+required, not optional — plain `. /app/data/.secrets.env` only sets the variables in the current
+shell, it doesn't export them, so `uv run` (a separate child process) wouldn't actually see them.
+
+Tests never touch Google or the real `data/calendar.db`: `CalendarService` tests use a fake
+Google client object (queued canned responses instead of real API calls), and auth tests use a
+fresh in-memory SQLite database per test.
+
 ---
 
 ## License
