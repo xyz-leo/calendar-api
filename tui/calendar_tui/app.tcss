@@ -1,0 +1,194 @@
+Screen {
+    background: $background;
+}
+
+/* --- SetupScreen --- */
+
+#setup-box {
+    width: 64;
+    height: auto;
+    border: round $primary;
+    background: $surface;
+    padding: 1 3;
+}
+
+#setup-banner {
+    width: 100%;
+    content-align: center middle;
+    color: $accent;
+    text-style: bold;
+    margin-bottom: 1;
+}
+
+#setup-prompt {
+    color: $primary;
+    margin-bottom: 1;
+}
+
+#setup-input {
+    border: round $primary;
+}
+
+#setup-input:focus {
+    border: round $accent;
+}
+
+/* --- EventListScreen --- */
+
+#events-panel {
+    border: round $primary;
+    background: $surface;
+    margin: 1 2;
+    padding: 0 1;
+}
+
+#clock {
+    width: 100%;
+    height: auto;
+    padding-top: 1;
+}
+
+#clock-time {
+    width: 100%;
+    content-align: center middle;
+    color: $primary;
+    text-style: bold;
+}
+
+#clock-date {
+    width: 100%;
+    content-align: center middle;
+    color: $foreground;
+    margin-top: 1;
+}
+
+#events-title {
+    width: 100%;
+    content-align: center middle;
+    color: $accent;
+    text-style: bold;
+    padding: 1 0 1 0;
+}
+
+#events {
+    height: 1fr;
+    max-height: 1000;
+    background: $surface;
+    scrollbar-color: $primary-darken-3;
+    scrollbar-background: $panel;
+    scrollbar-size-vertical: 1;
+    scrollbar-size-horizontal: 0;
+}
+
+/* DataTable's own :focus state applies a 5% white background-tint across its
+   whole box — including the blank space beyond the last row, which never
+   gets that tint applied to the zebra-striped row colors themselves (those
+   go through a separate component-style path). On a tall terminal with few
+   events, that mismatch reads as a distinct gray "gap" below the list.
+   Neutralizing the tint keeps blank space and striped rows the same color. */
+#events:focus {
+    background-tint: $foreground 0%;
+}
+
+#events > .datatable--header {
+    background: $panel;
+    color: $primary;
+    text-style: bold;
+}
+
+#events > .datatable--cursor {
+    background: $primary 35%;
+    color: $foreground;
+    text-style: bold;
+}
+
+#events > .datatable--even-row {
+    background: $surface;
+}
+
+#events > .datatable--odd-row {
+    background: $panel;
+}
+
+/* --- EventDetailScreen --- */
+
+EventDetailScreen {
+    align: center middle;
+}
+
+#detail-box {
+    width: 80%;
+    min-width: 40;
+    max-width: 90;
+    height: auto;
+    max-height: 80%;
+    border: round $primary;
+    background: $surface;
+    padding: 1 3;
+    scrollbar-color: $primary-darken-3;
+    scrollbar-background: $panel;
+    scrollbar-size-vertical: 1;
+    scrollbar-size-horizontal: 0;
+}
+
+#detail-title {
+    width: 100%;
+    content-align: center middle;
+    color: $accent;
+    text-style: bold;
+    margin-bottom: 1;
+}
+
+.detail-field {
+    width: 100%;
+    color: $foreground;
+    margin-bottom: 1;
+}
+
+/* --- StylesScreen --- */
+
+#styles-box {
+    width: 50;
+    height: auto;
+    max-height: 30;
+    border: round $primary;
+    background: $surface;
+    padding: 1 3;
+}
+
+#styles-title {
+    width: 100%;
+    content-align: center middle;
+    color: $accent;
+    text-style: bold;
+    margin-bottom: 1;
+}
+
+#styles-list {
+    height: auto;
+    max-height: 20;
+    background: $surface;
+    scrollbar-color: $primary-darken-3;
+    scrollbar-background: $panel;
+    scrollbar-size-vertical: 1;
+    scrollbar-size-horizontal: 0;
+}
+
+/* --- ansi-dark / ansi-light: scrollbar color ---
+   Textual can't actually darken a color in an ansi=True theme (there's no
+   "20% darker" for a fixed terminal palette slot) — $primary-darken-3
+   silently resolves to plain $primary there, undoing the point of using it.
+   ansi-dark/ansi-light's $primary is the exact same literal hex as
+   calendar-tui's (see theme.py), so hardcoding calendar-tui's own resolved
+   primary-darken-3 value here keeps the scrollbar identical across both
+   instead of reverting to full-brightness ruby. */
+
+.-theme-ansi-dark #events,
+.-theme-ansi-dark #styles-list,
+.-theme-ansi-dark #detail-box,
+.-theme-ansi-light #events,
+.-theme-ansi-light #styles-list,
+.-theme-ansi-light #detail-box {
+    scrollbar-color: #8b2b41;
+}
+

@@ -23,3 +23,11 @@ def api_server(config: dict) -> str | None:
 
 def token(config: dict) -> str | None:
     return os.environ.get("CALENDAR_TOKEN") or config.get("token")
+
+
+def active_theme(config: dict) -> str | None:
+    return config.get("theme")
+
+
+def show_clock(config: dict) -> bool:
+    return config.get("show_clock", True)
