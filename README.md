@@ -26,8 +26,10 @@ This README currently documents what's needed to set up and run the project.
 
 ### System dependencies
 
-The only thing you need installed on your machine is **Docker + Docker Compose**. Python, `uv`,
-and every other dependency live entirely inside the container — nothing else touches your system.
+The only thing you need installed on your machine to run the API is **Docker + Docker Compose**.
+Python, `uv`, and every other dependency live entirely inside the container — nothing else touches
+your system. `uv` is only needed on the host if you also want to run the TUI client (see
+`tui/README.md`).
 
 See Docker's [install docs](https://docs.docker.com/engine/install/) for your OS. On Arch Linux:
 

@@ -1,0 +1,16 @@
+[project]
+name = "calendar-tui"
+version = "0.1.0"
+description = "Terminal client for calendar-api"
+requires-python = ">=3.12"
+dependencies = [
+    "textual>=0.89.1",
+    "httpx>=0.28.1",
+]
+
+[project.scripts]
+calendar-tui = "calendar_tui.app:run"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
