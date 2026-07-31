@@ -31,3 +31,11 @@ def active_theme(config: dict) -> str | None:
 
 def show_clock(config: dict) -> bool:
     return config.get("show_clock", True)
+
+
+def timezone(config: dict) -> str | None:
+    return config.get("timezone")
+
+
+def show_year(config: dict) -> bool:
+    return config.get("show_year", False)

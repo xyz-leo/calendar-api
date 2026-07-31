@@ -19,15 +19,25 @@ take effect immediately, no reinstall needed.
 calendar-tui
 ```
 
-First run asks for two things, once, and saves them to `~/.config/calendar-tui/config.json`:
+First run asks for three things, once, and saves them to `~/.config/calendar-tui/config.json`:
 
 1. **API server** — e.g. `http://localhost:8000` for local dev, or your deployed URL later.
 2. **API token** — get one from a running API container with `./scripts/calctl.sh token`
    (reads it from `tmp/cli_token` after minting it). This is a stopgap until the TUI has its
    own OAuth login flow.
+3. **Standard timezone** — picked from a list (Brazilian and US timezones first, then a curated
+   set of other common ones — not every timezone Google offers), defaulting to
+   `America/Sao_Paulo`. Every event you create or edit through the TUI uses this one timezone;
+   it's no longer a per-event field. Press **`z`** from the event list anytime afterward to
+   change it, or to just check the list of valid values — same picker either way. You can also
+   set `"timezone"` directly in `config.json` to any [IANA/Olson identifier][iana-tz] (e.g.
+   `"Europe/London"`), not just what's in the curated list.
 
-Both can be overridden per-run with env vars (`CALENDAR_API_SERVER`, `CALENDAR_TOKEN`) without
-touching the saved config — useful for pointing at a different server temporarily.
+[iana-tz]: https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
+
+Both server and token can be overridden per-run with env vars (`CALENDAR_API_SERVER`,
+`CALENDAR_TOKEN`) without touching the saved config — useful for pointing at a different server
+temporarily.
 
 To reconfigure permanently, delete `~/.config/calendar-tui/config.json` and run again.
 
@@ -36,14 +46,32 @@ fixed-width; Description stretches to fill whatever width is left and reflows on
 Any text too long for its column is truncated with an ellipsis rather than overflowing — on a
 narrow terminal (80 columns or less) the whole table still fits without a horizontal scrollbar.
 Dates are shown as `YYYY-MM-DD — HH:MM`, with the UTC offset and seconds stripped (the event's own
-timezone field already covers the former; the latter is never meaningful here). Press **`Enter`**
+timezone field already covers the former; the latter is never meaningful here). All-day events
+show just `YYYY-MM-DD`, no time — they're stored internally as midnight, but there's no real
+"00:00" to show. The list also drops the year by default (`MM-DD — HH:MM`) since it's almost
+always the current one — set `"show_year": true` in `config.json` to keep it. The detail screen
+(below) always shows the full date regardless. Press **`Enter`**
 on a selected event to see its full, untruncated details — description, location, start/end,
-timezone, all-day, status, and ID; press **`Enter`** (or `Esc`) again to go back. The detail box
-scales with the terminal (80% of its width, clamped to stay readable).
+all-day, status, and ID; press **`Enter`** (or `Esc`) again to go back. The detail box scales
+with the terminal (80% of its width, clamped to stay readable).
 
 A small live clock (local system time, `tty-clock`-style block digits) plus today's date sits
 above the list. Press **`c`** to show/hide it — the choice is remembered in
 `~/.config/calendar-tui/config.json`.
+
+### Creating, editing, and deleting events
+
+- **`n`** from the event list opens a blank form (Summary, Description, Location, Start, End,
+  Recurrence — timezone isn't a field here, every event uses the standard timezone set up above).
+  `Tab`/`Shift+Tab` moves between fields.
+- **`u`** from an event's detail screen opens the same form, pre-filled with that event's current
+  values.
+- **`ctrl+s`** in the form validates the required fields (Summary, Start) and shows a plain-text
+  review of what's about to be sent — type **`yes`** and press `Enter` to actually save, anything
+  else (or `Esc`) goes back to the form with your input untouched.
+- **`d`** from an event's detail screen asks for the same `yes` confirmation, then deletes it.
+
+All three return to the event list (refreshed) once the change actually goes through.
 
 ## Theming
 
