@@ -84,6 +84,22 @@ A small live clock (local system time, `tty-clock`-style block digits) plus toda
 above the list. Press **`c`** to show/hide it — the choice is remembered in
 `~/.config/calendar-tui/config.json`.
 
+### Filtering by date
+
+Press **`f`** from the event list to open a small menu:
+
+- **Today** / **This week** / **This month** — quick presets, always counted forward from right
+  now (not calendar-aligned — "this week" means the next 7 days, not Sunday-to-Saturday).
+- **Pick month...** — type a month as `YYYY-MM` (e.g. `2026-08`) for the whole calendar month.
+- **Pick date...** — type a single day as `YYYY-MM-DD` for just that day.
+- **Clear filter** — only shown once a filter is active; goes back to the default "everything
+  upcoming" view.
+
+The active filter shows in the title ("Google Calendar Events — This month") and applies to
+whichever layout you're in. It's not saved anywhere — every fresh launch starts back at the
+default unfiltered view. Month/date picks are interpreted in your standard timezone (see above),
+same as event creation.
+
 ### Creating, editing, and deleting events
 
 - **`n`** from the event list opens a blank form (Summary, Description, Location, Start, End,

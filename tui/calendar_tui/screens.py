@@ -1,9 +1,12 @@
+import calendar
 import re
-from datetime import date
+from datetime import date, datetime, time
 from typing import Callable
+from zoneinfo import ZoneInfo
 
 from textual.app import ComposeResult
 from textual.containers import Center, Middle, Vertical, VerticalScroll
+from textual.geometry import Region
 from textual.screen import Screen
 from textual.widgets import DataTable, Footer, Input, Label, OptionList
 from textual.widgets.option_list import Option
@@ -157,6 +160,7 @@ class EventListScreen(Screen):
         ("c", "toggle_clock", "Clock"),
         ("z", "change_timezone", "Timezone"),
         ("l", "toggle_layout", "Layout"),
+        ("f", "filter", "Filter"),
     ]
 
     def __init__(self) -> None:
@@ -164,6 +168,11 @@ class EventListScreen(Screen):
         self._events: dict[str, dict] = {}
         self._event_order: list[str] = []
         self._agenda_highlighted: str | None = None
+        self._agenda_group_header: dict[str, int] = {}
+        # None = no filter, showing everything upcoming (the default). Reset
+        # every launch — deliberately not persisted like theme/layout/timezone.
+        self._filter_params: dict | None = None
+        self._filter_label: str | None = None
 
     def compose(self) -> ComposeResult:
         with Vertical(id="events-panel"):
@@ -213,7 +222,7 @@ class EventListScreen(Screen):
         server = config.api_server(cfg)
         token = config.token(cfg)
         try:
-            events = api.fetch_events(server, token)
+            events = api.fetch_events(server, token, params=self._filter_params)
         except api.ApiError as e:
             self.notify(str(e), severity="error")
             return
@@ -221,6 +230,16 @@ class EventListScreen(Screen):
         self._event_order = [event["id"] for event in events]
         self._render_table()
         self._render_agenda()
+
+    def action_filter(self) -> None:
+        self.app.push_screen(FilterScreen(self._filter_label, self._apply_filter))
+
+    def _apply_filter(self, params: dict | None, label: str | None) -> None:
+        self._filter_params = params
+        self._filter_label = label
+        title = "Google Calendar Events" if label is None else f"Google Calendar Events — {label}"
+        self.query_one("#events-title", Label).update(title)
+        self.action_refresh()
 
     def _description_width(self) -> int:
         table = self.query_one(DataTable)
@@ -266,6 +285,7 @@ class EventListScreen(Screen):
         option_list = self.query_one("#events-agenda", OptionList)
         option_list.clear_options()
         self._agenda_highlighted = None
+        self._agenda_group_header = {}
         show_year = config.show_year(config.load())
         current_day = None
         for event_id in self._event_order:
@@ -275,6 +295,7 @@ class EventListScreen(Screen):
                 if current_day is not None:
                     option_list.add_option(Option(" ", disabled=True))
                 option_list.add_option(Option(_day_header(event["start"], show_year), disabled=True))
+                self._agenda_group_header[event_id] = option_list.option_count - 1
                 current_day = day
             option_list.add_option(Option(self._agenda_label(event, _AGENDA_BULLET), id=event_id))
         # OptionList doesn't auto-highlight anything until the first keypress —
@@ -303,6 +324,29 @@ class EventListScreen(Screen):
         if new_id and new_id in self._events:
             option_list.replace_option_prompt(new_id, self._agenda_label(self._events[new_id], _AGENDA_CURSOR))
         self._agenda_highlighted = new_id
+        # OptionList.scroll_to_highlight (already run by the time this handler
+        # fires) only scrolls the minimum needed to reveal the highlighted
+        # line itself — for the first event in a day group, that can leave
+        # the day header sitting just above the viewport, scrolled out of
+        # view until you nudge the scrollbar with the mouse. Re-run the
+        # scroll with a region that also covers that header so it's always
+        # pulled back into view together with the event under it.
+        header_index = self._agenda_group_header.get(new_id)
+        if header_index is not None:
+            try:
+                top = option_list._index_to_line[header_index]
+                bottom = (
+                    option_list._index_to_line[event.option_index] + option_list._heights[event.option_index]
+                )
+            except KeyError:
+                pass  # Line cache not built yet (e.g. before first layout) — nothing to scroll.
+            else:
+                option_list.scroll_to_region(
+                    Region(0, top, option_list.scrollable_content_region.width, bottom - top),
+                    animate=False,
+                    force=True,
+                    immediate=True,
+                )
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
         if not event.option.id:
@@ -588,4 +632,133 @@ class StylesScreen(Screen):
 
     def action_cancel(self) -> None:
         self.app.theme = self._original_theme
+        self.app.pop_screen()
+
+
+class _FilterPromptScreen(Screen):
+    """Single free-text input for a custom filter value (a month or a date).
+
+    Always pops itself back to whatever pushed it (the FilterScreen menu) on
+    Enter — validation happens in on_submit, called after that pop, so an
+    invalid value just lands the user back on the menu with an error notice
+    instead of a dead-end retry loop in the input itself.
+    """
+
+    BINDINGS = [("escape", "cancel", "Cancel")]
+
+    def __init__(self, prompt: str, placeholder: str, on_submit: Callable[[str], None]) -> None:
+        super().__init__()
+        self.prompt = prompt
+        self.placeholder = placeholder
+        self.on_submit = on_submit
+
+    def compose(self) -> ComposeResult:
+        with Center():
+            with Middle():
+                with Vertical(id="filter-prompt-box"):
+                    yield Label(self.prompt, id="filter-prompt-label")
+                    yield Input(placeholder=self.placeholder, id="filter-prompt-input")
+        yield Footer()
+
+    def on_mount(self) -> None:
+        self.query_one(Input).focus()
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        value = event.value.strip()
+        if not value:
+            return
+        self.app.pop_screen()
+        self.on_submit(value)
+
+    def action_cancel(self) -> None:
+        self.app.pop_screen()
+
+
+class FilterScreen(Screen):
+    """Pick a date-range filter for the event list, or clear the current one.
+
+    Presets ("Today"/"This week"/"This month") map straight onto the API's
+    own `range` query param (always "from now", not calendar-aligned — same
+    as the API). "Pick month..."/"Pick date..." open a small text prompt and
+    compute explicit `from`/`to` bounds instead.
+    """
+
+    BINDINGS = [("escape", "cancel", "Cancel")]
+
+    _PRESETS = [("Today", "today"), ("This week", "week"), ("This month", "month")]
+
+    def __init__(self, active_label: str | None, on_apply: Callable[[dict | None, str | None], None]) -> None:
+        super().__init__()
+        self.active_label = active_label
+        self.on_apply = on_apply
+
+    def compose(self) -> ComposeResult:
+        with Center():
+            with Middle():
+                with Vertical(id="filter-box"):
+                    yield Label("Filter by date", id="filter-title")
+                    yield OptionList(id="filter-list")
+        yield Footer()
+
+    def on_mount(self) -> None:
+        option_list = self.query_one(OptionList)
+        options = [Option(label, id=f"range:{key}") for label, key in self._PRESETS]
+        options.append(Option("Pick month...", id="pick-month"))
+        options.append(Option("Pick date...", id="pick-date"))
+        if self.active_label is not None:
+            options.append(Option("Clear filter", id="clear"))
+        option_list.add_options(options)
+        option_list.focus()
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        option_id = event.option.id
+        if option_id is None:
+            return
+        if option_id == "clear":
+            self.app.pop_screen()
+            self.on_apply(None, None)
+        elif option_id.startswith("range:"):
+            key = option_id.split(":", 1)[1]
+            label = next(label for label, k in self._PRESETS if k == key)
+            self.app.pop_screen()
+            self.on_apply({"range": key}, label)
+        elif option_id == "pick-month":
+            self.app.push_screen(_FilterPromptScreen("Month (YYYY-MM)", "2026-08", self._submit_month))
+        elif option_id == "pick-date":
+            self.app.push_screen(_FilterPromptScreen("Date (YYYY-MM-DD)", "2026-08-15", self._submit_date))
+
+    def _standard_timezone(self) -> ZoneInfo:
+        return ZoneInfo(config.timezone(config.load()) or DEFAULT_TIMEZONE)
+
+    def _submit_month(self, value: str) -> None:
+        try:
+            year_str, month_str = value.split("-", 1)
+            year, month = int(year_str), int(month_str)
+            if not 1 <= month <= 12:
+                raise ValueError
+        except ValueError:
+            self.notify("Expected YYYY-MM, e.g. 2026-08.", severity="error")
+            return
+        tz = self._standard_timezone()
+        last_day = calendar.monthrange(year, month)[1]
+        from_ = datetime(year, month, 1, tzinfo=tz)
+        to = datetime(year, month, last_day, 23, 59, 59, tzinfo=tz)
+        label = date(year, month, 1).strftime("%B %Y")
+        self.app.pop_screen()
+        self.on_apply({"from": from_.isoformat(), "to": to.isoformat()}, label)
+
+    def _submit_date(self, value: str) -> None:
+        try:
+            day = date.fromisoformat(value)
+        except ValueError:
+            self.notify("Expected YYYY-MM-DD, e.g. 2026-08-15.", severity="error")
+            return
+        tz = self._standard_timezone()
+        from_ = datetime.combine(day, time.min, tzinfo=tz)
+        to = datetime.combine(day, time.max.replace(microsecond=0), tzinfo=tz)
+        label = day.strftime("%b %-d, %Y").lower()
+        self.app.pop_screen()
+        self.on_apply({"from": from_.isoformat(), "to": to.isoformat()}, label)
+
+    def action_cancel(self) -> None:
         self.app.pop_screen()

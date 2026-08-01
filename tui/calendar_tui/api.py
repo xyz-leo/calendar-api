@@ -23,8 +23,8 @@ def _request(
     return response
 
 
-def fetch_events(api_server: str, token: str) -> list[dict]:
-    return _request("GET", api_server, token, "/events", 200).json()
+def fetch_events(api_server: str, token: str, params: dict | None = None) -> list[dict]:
+    return _request("GET", api_server, token, "/events", 200, params=params).json()
 
 
 def create_event(api_server: str, token: str, payload: dict) -> dict:

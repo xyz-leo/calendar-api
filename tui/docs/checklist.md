@@ -7,13 +7,18 @@ stopgap) are tracked separately and aren't included here.
   headless scripts) against the real Docker API during development. None of that is
   a persisted test suite. The API side has one; the TUI doesn't.
 
-- **Only shows "upcoming" events — no date-range browsing.** The event list always
-  fetches with no date filter. The API already supports `from`/`to`/`range` query
-  params for this; the TUI doesn't use them. No way to look at last month, jump to a
-  specific date, or see anything in the past.
-
-- **No search/filter in the list.** With more than a screenful of events, no way to
-  jump to or filter for a specific one — just scrolling.
+- **No text search in the list.** With more than a screenful of events, no way to
+  jump to or filter for a specific one by name — just scrolling (date-range
+  filtering via `f` — today/week/month/a specific month/a specific date — is
+  already covered, see README). The API doesn't expose search either:
+  `calendar_service.list_events` only forwards `timeMin`/`timeMax` to Google, never
+  Google's own `q` (free-text) param, and the `/events` route doesn't accept one.
+  This should be added server-side first (`q` through `calendar_service.list_events`
+  → the `/events` route → the TUI, the same pattern already used for
+  `from`/`to`/`range`) rather than done as a client-side substring filter over
+  whatever's already fetched — the API is what should own query semantics, so any
+  other client hitting it gets the same search behavior for free instead of every
+  client reimplementing its own weaker approximation.
 
 - **Recurring-event edit semantics aren't addressed.** Editing an instance of a
   recurring series just PATCHes that one instance. There's no UI acknowledgment of
