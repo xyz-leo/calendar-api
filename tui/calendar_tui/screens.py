@@ -206,12 +206,21 @@ class LoginWaitScreen(Screen):
 class TimezoneScreen(Screen):
     """Pick the one standard timezone used for every event — forced on first
     boot (via on_done, same pop-then-push pattern as SetupScreen), and
-    reachable anytime after via `z` from the event list to change it or just
-    check the list of valid values."""
+    reachable anytime after via the options menu to change it or just check
+    the list of valid values.
 
-    def __init__(self, on_done: Callable[[], None]) -> None:
+    cancellable=False during the forced first-boot step: there's nothing
+    behind this screen yet to cancel back to, so Escape is disabled there
+    (check_action hides it from the footer entirely, rather than leaving a
+    dead key visible). Every other use (options menu) leaves it True.
+    """
+
+    BINDINGS = [("escape", "cancel", "Cancel")]
+
+    def __init__(self, on_done: Callable[[], None], *, cancellable: bool = True) -> None:
         super().__init__()
         self.on_done = on_done
+        self.cancellable = cancellable
 
     def compose(self) -> ComposeResult:
         with Center():
@@ -229,6 +238,11 @@ class TimezoneScreen(Screen):
             option_list.highlighted = COMMON_TIMEZONES.index(current)
         option_list.focus()
 
+    def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        if action == "cancel" and not self.cancellable:
+            return None  # Hide the binding from the footer instead of leaving a dead key.
+        return True
+
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
         if not event.option.id:
             return
@@ -236,6 +250,9 @@ class TimezoneScreen(Screen):
         cfg["timezone"] = event.option.id
         config.save(cfg)
         self.on_done()
+
+    def action_cancel(self) -> None:
+        self.app.pop_screen()
 
 
 _DATE_WIDTH = 18  # "YYYY-MM-DD — HH:MM"
@@ -266,11 +283,8 @@ class EventListScreen(Screen):
     BINDINGS = [
         ("r", "refresh", "Refresh"),
         ("n", "create", "New"),
-        ("t", "styles", "Styles"),
-        ("c", "toggle_clock", "Clock"),
-        ("z", "change_timezone", "Timezone"),
-        ("l", "toggle_layout", "Layout"),
         ("f", "filter", "Filter"),
+        ("o", "options", "Options"),
     ]
 
     def __init__(self) -> None:
@@ -289,7 +303,14 @@ class EventListScreen(Screen):
             yield Clock(id="clock")
             yield Label("Google Calendar Events", id="events-title")
             yield DataTable(id="events")
-            yield OptionList(id="events-agenda")
+            # Center wraps only the agenda list (table view stays full-width,
+            # unaffected) — Textual's align only re-centers a container's
+            # *whole* child group by their combined bounding box, so putting
+            # #events-agenda alone in its own Center is what actually makes
+            # it individually centered instead of the panel's full-width
+            # siblings (Clock/title) pinning that bounding box to full width.
+            with Center(id="agenda-center"):
+                yield OptionList(id="events-agenda")
         yield Footer()
 
     def on_mount(self) -> None:
@@ -410,7 +431,7 @@ class EventListScreen(Screen):
             option_list.add_option(Option(self._agenda_label(event, _AGENDA_BULLET), id=event_id))
         # OptionList doesn't auto-highlight anything until the first keypress —
         # start on the first real event (skipping the leading day header) so
-        # there's always a visible cursor position, same as StylesScreen/
+        # there's always a visible cursor position, same as ThemesScreen/
         # TimezoneScreen already do. Setting .highlighted fires the same
         # OptionHighlighted event a keypress would, so the "> " marker below
         # still gets applied to it.
@@ -468,11 +489,88 @@ class EventListScreen(Screen):
     def action_create(self) -> None:
         self.app.push_screen(EventFormScreen(None, on_saved=self.action_refresh))
 
-    def action_styles(self) -> None:
-        self.app.push_screen(StylesScreen())
+    def action_options(self) -> None:
+        self.app.push_screen(
+            OptionsScreen(
+                on_timezone=self.action_change_timezone,
+                on_themes=self.action_themes,
+                on_toggle_clock=self.action_toggle_clock,
+                on_toggle_layout=self.action_toggle_layout,
+            )
+        )
+
+    def action_themes(self) -> None:
+        self.app.push_screen(ThemesScreen())
 
     def action_change_timezone(self) -> None:
         self.app.push_screen(TimezoneScreen(self.app.pop_screen))
+
+
+class OptionsScreen(Screen):
+    """Menu for the settings that used to each have their own footer
+    keybinding (timezone, theme, clock, layout) — grouped here under one `o`
+    entry so the footer itself stays short. Selecting an entry pops this menu
+    first, then runs the matching EventListScreen action, same as it would
+    have run directly from its old dedicated key. "Exit" is the one entry
+    that doesn't pop first — it quits the whole app, so there's no screen
+    left to return to either way.
+    """
+
+    BINDINGS = [("escape", "cancel", "Cancel")]
+
+    def __init__(
+        self,
+        on_timezone: Callable[[], None],
+        on_themes: Callable[[], None],
+        on_toggle_clock: Callable[[], None],
+        on_toggle_layout: Callable[[], None],
+    ) -> None:
+        super().__init__()
+        self.on_timezone = on_timezone
+        self.on_themes = on_themes
+        self.on_toggle_clock = on_toggle_clock
+        self.on_toggle_layout = on_toggle_layout
+
+    def compose(self) -> ComposeResult:
+        with Center():
+            with Middle():
+                with Vertical(id="options-box"):
+                    yield Label("Options", id="options-title")
+                    yield OptionList(id="options-list")
+        yield Footer()
+
+    def on_mount(self) -> None:
+        option_list = self.query_one(OptionList)
+        option_list.add_options(
+            [
+                Option("Timezone", id="timezone"),
+                Option("Themes", id="themes"),
+                Option("Toggle clock on/off", id="clock"),
+                Option("Toggle layout (agenda/table)", id="layout"),
+                Option("Exit", id="exit"),
+            ]
+        )
+        option_list.focus()
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        option_id = event.option.id
+        if option_id is None:
+            return
+        if option_id == "exit":
+            self.app.exit()
+            return
+        self.app.pop_screen()
+        if option_id == "timezone":
+            self.on_timezone()
+        elif option_id == "themes":
+            self.on_themes()
+        elif option_id == "clock":
+            self.on_toggle_clock()
+        elif option_id == "layout":
+            self.on_toggle_layout()
+
+    def action_cancel(self) -> None:
+        self.app.pop_screen()
 
 
 _DETAIL_FIELDS = [
@@ -706,7 +804,7 @@ class EventFormScreen(Screen):
         self.on_saved()
 
 
-class StylesScreen(Screen):
+class ThemesScreen(Screen):
     """Live-preview picker over every registered theme (built-in + our own)."""
 
     BINDINGS = [("escape", "cancel", "Cancel")]
@@ -714,9 +812,9 @@ class StylesScreen(Screen):
     def compose(self) -> ComposeResult:
         with Center():
             with Middle():
-                with Vertical(id="styles-box"):
-                    yield Label("Pick a style", id="styles-title")
-                    yield OptionList(id="styles-list")
+                with Vertical(id="themes-box"):
+                    yield Label("Pick a theme", id="themes-title")
+                    yield OptionList(id="themes-list")
         yield Footer()
 
     def on_mount(self) -> None:

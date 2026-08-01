@@ -25,10 +25,10 @@ First run asks for three things, once, and saves them to `~/.config/calendar-tui
 2. **Standard timezone** — picked from a list (Brazilian and US timezones first, then a curated
    set of other common ones — not every timezone Google offers), defaulting to
    `America/Sao_Paulo`. Every event you create or edit through the TUI uses this one timezone;
-   it's no longer a per-event field. Press **`z`** from the event list anytime afterward to
-   change it, or to just check the list of valid values — same picker either way. You can also
-   set `"timezone"` directly in `config.json` to any [IANA/Olson identifier][iana-tz] (e.g.
-   `"Europe/London"`), not just what's in the curated list.
+   it's no longer a per-event field. Press **`o`** from the event list anytime afterward, then
+   **Timezone**, to change it, or to just check the list of valid values — same picker either
+   way. You can also set `"timezone"` directly in `config.json` to any [IANA/Olson
+   identifier][iana-tz] (e.g. `"Europe/London"`), not just what's in the curated list.
 3. **Log in** — a small menu offers two ways to get a token:
    - **Log in with Google** — opens your system browser to the real Google consent screen. The
      TUI starts a temporary local server on its own (an OS-assigned free port, `127.0.0.1` only)
@@ -49,8 +49,8 @@ To reconfigure permanently, delete `~/.config/calendar-tui/config.json` and run 
 
 ### Two list layouts
 
-Press **`l`** to switch between two ways of presenting the same events — the choice is remembered
-in `config.json["layout"]`.
+Press **`o`** from the event list, then **Layout**, to switch between two ways of presenting the
+same events — the choice is remembered in `config.json["layout"]`.
 
 **agenda** (the default) groups events by day, most recent first: a day header, then one line per
 event — the time (or `all-day`) and the summary, a colored bullet marking each one. The
@@ -87,7 +87,7 @@ description, location, start/end, all-day, status, and ID; press **`Enter`** (or
 go back. The detail box scales with the terminal (80% of its width, clamped to stay readable).
 
 A small live clock (local system time, `tty-clock`-style block digits) plus today's date sits
-above the list. Press **`c`** to show/hide it — the choice is remembered in
+above the list. Press **`o`**, then **Clock**, to show/hide it — the choice is remembered in
 `~/.config/calendar-tui/config.json`.
 
 ### Filtering by date
@@ -105,6 +105,17 @@ The active filter shows in the title ("Google Calendar Events — This month") a
 whichever layout you're in. It's not saved anywhere — every fresh launch starts back at the
 default unfiltered view. Month/date picks are interpreted in your standard timezone (see above),
 same as event creation.
+
+### Options menu
+
+Press **`o`** from the event list to open a menu grouping everything above that isn't an
+everyday action: **Timezone**, **Themes**, **Toggle clock on/off**, **Toggle layout
+(agenda/table)**, and **Exit**. Picking one of the first four runs the same thing its old
+dedicated key used to, then either opens the relevant picker or applies the toggle immediately
+and closes the menu; **Exit** quits the app outright. Timezone and Themes are both cancelable
+with **`Esc`** — backs out without changing anything, same either way — except during the very
+first run, before a timezone is set at all, where there's nothing yet to cancel back to and the
+key is disabled.
 
 ### Creating, editing, and deleting events
 
@@ -126,9 +137,10 @@ All three return to the event list (refreshed) once the change actually goes thr
 accents, and ruby red as the primary list/border/selection color — defined with fixed colors
 rather than pulled from the terminal.
 
-Press **`t`** from the event list to open the style picker: an arrow-key list of every available
-theme (Textual's built-ins — nord, dracula, gruvbox, catppuccin, etc. — plus the custom one
-below), with a live preview as you move the highlight. `Enter` confirms and remembers your choice
+Press **`o`** from the event list, then **Themes**, to open the theme picker: an arrow-key list of
+every available theme (Textual's built-ins — nord, dracula, gruvbox, catppuccin, etc. — plus the
+custom one below), with a live preview as you move the highlight. `Enter` confirms and remembers
+your choice
 in `~/.config/calendar-tui/config.json`; `Esc` cancels and reverts. `ansi-dark`/`ansi-light` are
 also replaced with this same ruby/gold palette, just with a transparent background that inherits
 your terminal instead of a fixed one — useful if your terminal itself is transparent/blurred and

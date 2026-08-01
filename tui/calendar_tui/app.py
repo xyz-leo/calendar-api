@@ -33,7 +33,7 @@ class CalendarTUI(App):
                 self._advance,
             )
         if not config.timezone(cfg):
-            return TimezoneScreen(self._advance)
+            return TimezoneScreen(self._advance, cancellable=False)
         if not config.token(cfg):
             return LoginChoiceScreen(config.api_server(cfg), self._advance)
         return EventListScreen()
