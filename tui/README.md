@@ -21,17 +21,23 @@ calendar-tui
 
 First run asks for three things, once, and saves them to `~/.config/calendar-tui/config.json`:
 
-1. **API server** — e.g. `http://localhost:8000` for local dev, or your deployed URL later.
-2. **API token** — get one from a running API container with `./scripts/calctl.sh token`
-   (reads it from `tmp/cli_token` after minting it). This is a stopgap until the TUI has its
-   own OAuth login flow.
-3. **Standard timezone** — picked from a list (Brazilian and US timezones first, then a curated
+1. **API server** — e.g. `http://localhost:8088` for local dev, or your deployed URL later.
+2. **Standard timezone** — picked from a list (Brazilian and US timezones first, then a curated
    set of other common ones — not every timezone Google offers), defaulting to
    `America/Sao_Paulo`. Every event you create or edit through the TUI uses this one timezone;
    it's no longer a per-event field. Press **`z`** from the event list anytime afterward to
    change it, or to just check the list of valid values — same picker either way. You can also
    set `"timezone"` directly in `config.json` to any [IANA/Olson identifier][iana-tz] (e.g.
    `"Europe/London"`), not just what's in the curated list.
+3. **Log in** — a small menu offers two ways to get a token:
+   - **Log in with Google** — opens your system browser to the real Google consent screen. The
+     TUI starts a temporary local server on its own (an OS-assigned free port, `127.0.0.1` only)
+     to catch the token when it comes back, so there's nothing to copy — once you finish in the
+     browser, the TUI picks up right where it left off. Press **`Escape`** to cancel and go back
+     to the menu if you change your mind or it's taking too long (5 minute timeout either way).
+   - **Paste a token manually** — the previous flow, still here for dev/testing: get one from a
+     running API container with `./scripts/calctl.sh token` (reads it from `tmp/cli_token` after
+     minting it) and paste it in.
 
 [iana-tz]: https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
 

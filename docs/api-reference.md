@@ -1,6 +1,6 @@
 # API Reference
 
-Base URL (local): `http://localhost:8000`. All request/response bodies are JSON. All routes
+Base URL (local): `http://localhost:8088`. All request/response bodies are JSON. All routes
 except `/health`, `/auth/login`, and `/auth/callback` require:
 
 ```
@@ -110,8 +110,13 @@ rather than `404`, briefly.
 
 Start the Google OAuth flow. No auth required.
 
-**Response**: `302` redirect to Google's consent screen. Sets two short-lived (`max_age=300`)
-httponly cookies (`oauth_state`, `oauth_code_verifier`) used by `/auth/callback`.
+**Query parameters**: `port` (optional, `1024`-`65535`). Only meant for a CLI/TUI client that
+can't read the JSON response `/auth/callback` normally returns — see that endpoint below for
+what supplying it changes.
+
+**Response**: `307` redirect to Google's consent screen. Sets two short-lived (`max_age=300`)
+httponly cookies (`oauth_state`, `oauth_code_verifier`) used by `/auth/callback`, plus a third
+(`oauth_loopback_port`) if `port` was given.
 
 ---
 
@@ -123,8 +128,11 @@ parameter plus the cookies set by `/auth/login`.
 
 **Query parameters**: `code`, `state` (both required, supplied by Google).
 
-**Response**: `200`, `{"access_token": string, "token_type": "bearer"}`. `400` on state mismatch,
-missing PKCE verifier, or missing `calendar.events` scope grant.
+**Response**: `200`, `{"access_token": string, "token_type": "bearer"}` — unless `/auth/login`
+was called with `port`, in which case this is instead a `307` redirect to
+`http://127.0.0.1:<port>/callback?token=<access_token>` (the loopback-listening client captures
+it from there; see `docs/architecture.md`'s Google OAuth section for why). `400` on state
+mismatch, missing PKCE verifier, or missing `calendar.events` scope grant.
 
 ---
 

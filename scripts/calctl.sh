@@ -12,7 +12,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 TOKEN_FILE="$REPO_ROOT/tmp/cli_token"
-BASE_URL="${CALCTL_BASE_URL:-http://localhost:8000}"
+BASE_URL="${CALCTL_BASE_URL:-http://localhost:8088}"
 
 usage() {
     name="$(basename "$0")"

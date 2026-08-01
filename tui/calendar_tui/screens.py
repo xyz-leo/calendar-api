@@ -1,9 +1,12 @@
 import calendar
 import re
+import threading
+import webbrowser
 from datetime import date, datetime, time
 from typing import Callable
 from zoneinfo import ZoneInfo
 
+from textual import work
 from textual.app import ComposeResult
 from textual.containers import Center, Middle, Vertical, VerticalScroll
 from textual.geometry import Region
@@ -11,7 +14,7 @@ from textual.screen import Screen
 from textual.widgets import DataTable, Footer, Input, Label, OptionList
 from textual.widgets.option_list import Option
 
-from . import api, config
+from . import api, config, oauth_login
 from .clock import Clock
 from .timezones import COMMON_TIMEZONES, DEFAULT_TIMEZONE
 
@@ -91,6 +94,113 @@ class SetupScreen(Screen):
         cfg[self.field] = value
         config.save(cfg)
         self.on_done()
+
+
+_MANUAL_TOKEN_SETUP = ("token", "Paste your API token (get one with: calctl.sh token)", "eyJ...")
+
+
+class LoginChoiceScreen(Screen):
+    """First screen shown once an API server is configured but no token is —
+    offers a real Google login (opens the browser) or the calctl.sh-based
+    manual paste, unchanged from what SetupScreen always did on its own."""
+
+    def __init__(self, api_server: str, on_done: Callable[[], None]) -> None:
+        super().__init__()
+        self.api_server = api_server
+        self.on_done = on_done
+
+    def compose(self) -> ComposeResult:
+        with Center():
+            with Middle():
+                with Vertical(id="login-choice-box"):
+                    yield Label("Log in", id="login-choice-title")
+                    yield OptionList(id="login-choice-list")
+        yield Footer()
+
+    def on_mount(self) -> None:
+        option_list = self.query_one(OptionList)
+        option_list.add_options(
+            [
+                Option("Log in with Google (opens your browser)", id="google"),
+                Option("Paste a token manually", id="manual"),
+            ]
+        )
+        option_list.focus()
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        option_id = event.option.id
+        if option_id is None:
+            return
+        # Pop before pushing the next screen, same as every other transition in
+        # this codebase — keeps exactly one screen on the stack at a time, which
+        # is what lets on_done (ultimately app._advance) pop-then-push safely.
+        self.app.pop_screen()
+        if option_id == "google":
+            self.app.push_screen(LoginWaitScreen(self.api_server, self.on_done))
+        elif option_id == "manual":
+            self.app.push_screen(SetupScreen(*_MANUAL_TOKEN_SETUP, self.on_done))
+
+
+class LoginWaitScreen(Screen):
+    """Starts a local loopback server, opens the system browser to
+    /auth/login?port=<n>, and waits for the callback to carry the JWT back.
+    Escape cancels; both success and failure return to LoginChoiceScreen (or,
+    on success, hand off to on_done exactly like SetupScreen always did)."""
+
+    BINDINGS = [("escape", "cancel", "Cancel")]
+    TIMEOUT_SECONDS = 300
+
+    def __init__(self, api_server: str, on_done: Callable[[], None]) -> None:
+        super().__init__()
+        self.api_server = api_server
+        self.on_done = on_done
+        self._cancelled = threading.Event()
+
+    def compose(self) -> ComposeResult:
+        with Center():
+            with Middle():
+                with Vertical(id="login-wait-box"):
+                    yield Label("Waiting for you to finish in the browser...", id="login-wait-label")
+                    yield Label("Press Escape to cancel.", id="login-wait-hint")
+        yield Footer()
+
+    def on_mount(self) -> None:
+        self._wait_for_token()
+
+    @work(thread=True)
+    def _wait_for_token(self) -> None:
+        server = oauth_login.LoopbackServer()
+        webbrowser.open(f"{self.api_server.rstrip('/')}/auth/login?port={server.port}")
+        token = server.serve_one(timeout=self.TIMEOUT_SECONDS, cancel_event=self._cancelled)
+        # server.serve_one runs on this worker thread — call_from_thread is the
+        # only safe way back into screen-stack/widget state from here.
+        self.app.call_from_thread(self._handle_result, token)
+
+    def _handle_result(self, token: str | None) -> None:
+        if self._cancelled.is_set():
+            # action_cancel already popped/pushed on the UI thread — this late
+            # callback (the background thread noticing cancellation can lag a
+            # beat behind it) has nothing left to do.
+            return
+        if token is None:
+            self.notify("Login timed out or failed.", severity="error")
+            self.app.pop_screen()
+            self.app.push_screen(LoginChoiceScreen(self.api_server, self.on_done))
+            return
+        cfg = config.load()
+        cfg["token"] = token
+        config.save(cfg)
+        # No self.app.pop_screen() here — on_done (app._advance) already does
+        # exactly one pop before pushing the next screen, same contract
+        # SetupScreen/TimezoneScreen rely on. Popping here too was a real bug:
+        # it emptied the stack down to just Textual's implicit base screen,
+        # and _advance's own pop then had nothing left to pop.
+        self.on_done()
+
+    def action_cancel(self) -> None:
+        self._cancelled.set()
+        self.app.pop_screen()
+        self.app.push_screen(LoginChoiceScreen(self.api_server, self.on_done))
 
 
 class TimezoneScreen(Screen):

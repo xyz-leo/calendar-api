@@ -82,6 +82,20 @@ Standard Authorization Code flow with PKCE, implemented in `app/google_oauth.py`
   `get_user_credentials` transparently refreshes an expired access token before every
   `CalendarService` call; callers never see this.
 
+`/auth/callback` normally hands the minted JWT back as raw JSON in the response body — fine for
+a browser (a human reads and copies it), useless for a non-interactive client like the TUI that
+has no way to read that response itself. For that case, `/auth/login` accepts an optional `port`
+query param; `/auth/callback` then redirects the browser a *second* time, to
+`http://127.0.0.1:<port>/callback?token=<jwt>`, instead of returning JSON. This is RFC 8252's
+"loopback interface redirection" pattern for native/CLI apps (the same approach `gcloud`/`gh` use)
+— the client starts a temporary local HTTP server on that port before opening the browser, and
+captures the token from the redirect itself, no copy-paste involved. Google's own registered
+redirect URI never changes (`build_flow()` always uses the single fixed `GOOGLE_REDIRECT_URI`) —
+the loopback hop only happens on the second redirect, entirely between this API and the client's
+local listener, both already under the same trust boundary. The token does end up briefly in a
+URL's query string, but only a `127.0.0.1`-only one: it never leaves the machine, unlike a token
+in a URL that could cross the network or land in a shared proxy/server log.
+
 ### Application session
 
 Stateless JWT (`HS256`), issued by `/auth/callback`, required as `Authorization: Bearer <token>`

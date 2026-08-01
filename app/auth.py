@@ -1,8 +1,8 @@
 import secrets
 
 import jwt as pyjwt
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
+from fastapi.responses import JSONResponse, RedirectResponse, Response
 from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token as google_id_token
 from sqlalchemy.orm import Session
@@ -17,10 +17,13 @@ router = APIRouter()
 
 STATE_COOKIE = "oauth_state"
 CODE_VERIFIER_COOKIE = "oauth_code_verifier"
+# Set only when /auth/login was asked to hand the token back via a local loopback
+# redirect instead of raw JSON (the TUI's login flow) — see /auth/callback below.
+LOOPBACK_PORT_COOKIE = "oauth_loopback_port"
 
 
 @router.get("/auth/login")
-def login() -> RedirectResponse:
+def login(port: int | None = Query(default=None, ge=1024, le=65535)) -> RedirectResponse:
     flow = build_flow()
     authorization_url, state = flow.authorization_url(
         access_type="offline",
@@ -35,13 +38,20 @@ def login() -> RedirectResponse:
     response.set_cookie(
         CODE_VERIFIER_COOKIE, flow.code_verifier, max_age=300, httponly=True
     )
+    # A CLI/TUI client (no way to receive the JSON response below directly) passes its
+    # own local loopback port here; /auth/callback redirects the token there instead of
+    # returning it. Bounds are enforced by Query() above, not re-checked later — by the
+    # time /auth/callback reads this back it's from a cookie this server set, never from
+    # anything in that request itself.
+    if port is not None:
+        response.set_cookie(LOOPBACK_PORT_COOKIE, str(port), max_age=300, httponly=True)
     return response
 
 
 @router.get("/auth/callback")
 def callback(
     request: Request, code: str, state: str, db: Session = Depends(get_db)
-) -> JSONResponse:
+) -> Response:
     if not secrets.compare_digest(request.cookies.get(STATE_COOKIE, ""), state):
         raise HTTPException(status_code=400, detail="Invalid OAuth state")
 
@@ -65,7 +75,14 @@ def callback(
         )
 
     claims = google_id_token.verify_oauth2_token(
-        credentials.id_token, google_requests.Request(), settings.google_client_id
+        credentials.id_token,
+        google_requests.Request(),
+        settings.google_client_id,
+        # Zero tolerance by default — even a sub-second clock difference between
+        # this container and Google's servers rejects an otherwise-valid token
+        # with "used too early"/"expired" (seen in practice: 1 second off was
+        # enough). A small margin is standard practice for exactly this.
+        clock_skew_in_seconds=10,
     )
     google_id = claims["sub"]
     email = claims["email"]
@@ -84,9 +101,21 @@ def callback(
     db.refresh(user)
 
     access_token = create_access_token(user.id, user.session_version)
-    response = JSONResponse({"access_token": access_token, "token_type": "bearer"})
+
+    # Loopback handoff for a CLI/TUI client (see /auth/login): the port came from our
+    # own cookie, never from this request, and the host/scheme/path below are fixed
+    # string literals — no caller input ever reaches them, so this can't become an
+    # open redirect. Putting the token in a 127.0.0.1-only URL's query string is the
+    # standard RFC 8252 "loopback interface redirection" tradeoff (same approach
+    # gcloud/gh use for native-app logins) — it never leaves the machine.
+    loopback_port = request.cookies.get(LOOPBACK_PORT_COOKIE)
+    if loopback_port is not None:
+        response = RedirectResponse(f"http://127.0.0.1:{int(loopback_port)}/callback?token={access_token}")
+    else:
+        response = JSONResponse({"access_token": access_token, "token_type": "bearer"})
     response.delete_cookie(STATE_COOKIE)
     response.delete_cookie(CODE_VERIFIER_COOKIE)
+    response.delete_cookie(LOOPBACK_PORT_COOKIE)
     return response
 
 

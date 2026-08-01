@@ -33,6 +33,53 @@ Screen {
     border: round $accent;
 }
 
+/* --- LoginChoiceScreen --- */
+
+#login-choice-box {
+    width: 50;
+    height: auto;
+    border: round $primary;
+    background: $surface;
+    padding: 1 3;
+}
+
+#login-choice-title {
+    width: 100%;
+    content-align: center middle;
+    color: $accent;
+    text-style: bold;
+    margin-bottom: 1;
+}
+
+#login-choice-list {
+    height: auto;
+    background: $surface;
+}
+
+/* --- LoginWaitScreen --- */
+
+#login-wait-box {
+    width: 60;
+    height: auto;
+    border: round $primary;
+    background: $surface;
+    padding: 1 3;
+}
+
+#login-wait-label {
+    width: 100%;
+    content-align: center middle;
+    color: $accent;
+    text-style: bold;
+    margin-bottom: 1;
+}
+
+#login-wait-hint {
+    width: 100%;
+    content-align: center middle;
+    color: $foreground;
+}
+
 /* --- EventListScreen --- */
 
 #events-panel {

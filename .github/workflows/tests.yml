@@ -31,7 +31,7 @@ jobs:
           # never used to encrypt anything real here.
           GOOGLE_CLIENT_ID: "dummy-client-id"
           GOOGLE_CLIENT_SECRET: "dummy-client-secret"
-          GOOGLE_REDIRECT_URI: "http://localhost:8000/auth/callback"
+          GOOGLE_REDIRECT_URI: "http://localhost:8088/auth/callback"
           DATABASE_URL: "sqlite:///:memory:"
           JWT_SECRET: "dummy-jwt-secret-for-ci-only-32-bytes-min"
           TOKEN_ENCRYPTION_KEY: "N-MSupqTL6X3lisME4Z4nkVg5agFJe5u1IWMj_sDSVw="

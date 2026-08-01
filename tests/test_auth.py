@@ -2,8 +2,10 @@ from datetime import datetime, timezone
 
 import pytest
 from fastapi import HTTPException
+from fastapi.testclient import TestClient
 
-from app.auth import get_current_user, logout
+from app.auth import LOOPBACK_PORT_COOKIE, get_current_user, logout
+from app.main import app
 from app.models import User
 from app.security import create_access_token
 
@@ -88,3 +90,33 @@ def test_fresh_token_after_logout_is_valid_again(db_session):
     resolved = get_current_user(authorization=f"Bearer {new_token}", db=db_session)
 
     assert resolved.id == user.id
+
+
+# /auth/login's `port` query param is how a CLI/TUI client asks /auth/callback to
+# hand the token back via a local loopback redirect instead of raw JSON. These only
+# exercise that validation/cookie-setting boundary — no real Google call happens
+# here (flow.authorization_url() is pure local URL construction), so no mocking is
+# needed. follow_redirects=False matters: without it, TestClient would actually try
+# to follow the redirect to Google's real consent screen.
+client = TestClient(app, follow_redirects=False)
+
+
+def test_login_without_port_does_not_set_loopback_cookie():
+    response = client.get("/auth/login")
+
+    assert response.status_code == 307
+    assert LOOPBACK_PORT_COOKIE not in response.cookies
+
+
+def test_login_with_valid_port_sets_loopback_cookie():
+    response = client.get("/auth/login", params={"port": 54123})
+
+    assert response.status_code == 307
+    assert response.cookies[LOOPBACK_PORT_COOKIE] == "54123"
+
+
+@pytest.mark.parametrize("port", [80, 1023, 65536, 99999999])
+def test_login_with_out_of_range_port_is_422(port):
+    response = client.get("/auth/login", params={"port": port})
+
+    assert response.status_code == 422

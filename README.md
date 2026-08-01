@@ -60,7 +60,7 @@ credentials. Nothing here is centrally shared.
    for Google's review) removes both that expiry and the 100-test-user cap.
 4. Create credentials: `APIs & Services → Credentials → Create Credentials → OAuth client ID`,
    application type **Web application**. Add an **Authorized redirect URI** matching where you'll
-   run the app, e.g. `http://localhost:8000/auth/callback`.
+   run the app, e.g. `http://localhost:8088/auth/callback`.
 5. You'll get a **Client ID** and **Client Secret** — you'll need both in the next step.
 
 ### Environment variables
@@ -75,7 +75,7 @@ cp .env.example .env
 |---|---|
 | `GOOGLE_CLIENT_ID` | OAuth Client ID from your Google Cloud Console |
 | `GOOGLE_CLIENT_SECRET` | OAuth Client Secret from your Google Cloud Console |
-| `GOOGLE_REDIRECT_URI` | Must exactly match a redirect URI registered in the Console, e.g. `http://localhost:8000/auth/callback` |
+| `GOOGLE_REDIRECT_URI` | Must exactly match a redirect URI registered in the Console, e.g. `http://localhost:8088/auth/callback` |
 | `DATABASE_URL` | SQLite connection string; the default creates a local file |
 
 `.env` is gitignored and never committed — each person running this project supplies their own
@@ -97,7 +97,7 @@ That's the whole setup — it builds the image, installs dependencies, and start
 background. Check it's up:
 
 ```bash
-curl http://localhost:8000/health
+curl http://localhost:8088/health
 # {"status":"ok"}
 ```
 
