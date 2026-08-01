@@ -1,11 +1,19 @@
+# Production. `docker compose up --build -d` — no -f flag needed, this is the
+# plain default. For local dev instead, use docker-compose.dev.yml explicitly:
+# `docker compose -f docker-compose.dev.yml up --build`.
 services:
   api:
     build: .
+    # Fixed name, not the default "calendar-api-api-1" — this is the exact
+    # name furikaeri's Caddyfile targets (`reverse_proxy calendar-api:8000`)
+    # over the shared_proxy network below. Also happens to avoid any clash
+    # with another project's own same-named service sharing that network.
+    container_name: calendar-api
     ports:
-      # Loopback-only: reachable at localhost:8088 on this machine (dev, or
-      # the TUI running locally), never on the machine's public interface.
-      # A reverse proxy (nginx/Caddy, terminating TLS) is what should ever
-      # expose this to the outside world, proxying to 127.0.0.1:8088 itself.
+      # Loopback-only: reachable at localhost:8088 on this machine (useful
+      # for debugging directly on the VPS over SSH), never on the machine's
+      # public interface. The public route is furikaeri's Caddy, reaching
+      # this container over shared_proxy below — not through this port.
       - "127.0.0.1:8088:8000"
     env_file:
       - .env
@@ -16,3 +24,13 @@ services:
       - ./pyproject.toml:/app/pyproject.toml
       - ./uv.lock:/app/uv.lock
     restart: unless-stopped
+    networks:
+      - default
+      - shared_proxy
+
+# Created once, by hand, on the VPS (docker network create shared_proxy) —
+# this file only ever attaches to it, never creates or owns it. See
+# ~/Documents/calendar-api-source/deployment.md for the full explanation.
+networks:
+  shared_proxy:
+    external: true

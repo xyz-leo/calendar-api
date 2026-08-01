@@ -29,15 +29,12 @@ First run asks for three things, once, and saves them to `~/.config/calendar-tui
    **Timezone**, to change it, or to just check the list of valid values — same picker either
    way. You can also set `"timezone"` directly in `config.json` to any [IANA/Olson
    identifier][iana-tz] (e.g. `"Europe/London"`), not just what's in the curated list.
-3. **Log in** — a small menu offers two ways to get a token:
-   - **Log in with Google** — opens your system browser to the real Google consent screen. The
-     TUI starts a temporary local server on its own (an OS-assigned free port, `127.0.0.1` only)
-     to catch the token when it comes back, so there's nothing to copy — once you finish in the
-     browser, the TUI picks up right where it left off. Press **`Escape`** to cancel and go back
-     to the menu if you change your mind or it's taking too long (5 minute timeout either way).
-   - **Paste a token manually** — the previous flow, still here for dev/testing: get one from a
-     running API container with `./scripts/calctl.sh token` (reads it from `tmp/cli_token` after
-     minting it) and paste it in.
+3. **Log in with Google** — opens your system browser to the real Google consent screen. The
+   TUI starts a temporary local server on its own (an OS-assigned free port, `127.0.0.1` only)
+   to catch the token when it comes back, so there's nothing to copy — once you finish in the
+   browser, the TUI picks up right where it left off. Press **`Escape`** to cancel (or just wait
+   out the 5 minute timeout) if you change your mind or it's taking too long — either way, it
+   just tries again.
 
 [iana-tz]: https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
 
@@ -61,7 +58,7 @@ gold accent; every other theme uses its own accent color there.
 
 ```
 sat aug 1
-  ● all-day   ir koba!
+  ● all-day   Deploy app!
   ● all-day   Rent Due
 
 mon aug 3

@@ -1,0 +1,18 @@
+services:
+  api:
+    build: .
+    ports:
+      # Loopback-only: reachable at localhost:8088 on this machine (dev, or
+      # the TUI running locally), never on the machine's public interface.
+      # A reverse proxy (nginx/Caddy, terminating TLS) is what should ever
+      # expose this to the outside world, proxying to 127.0.0.1:8088 itself.
+      - "127.0.0.1:8088:8000"
+    env_file:
+      - .env
+    volumes:
+      - ./app:/app/app
+      - ./tests:/app/tests
+      - ./data:/app/data
+      - ./pyproject.toml:/app/pyproject.toml
+      - ./uv.lock:/app/uv.lock
+    restart: unless-stopped

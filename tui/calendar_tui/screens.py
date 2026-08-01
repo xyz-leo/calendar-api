@@ -96,56 +96,15 @@ class SetupScreen(Screen):
         self.on_done()
 
 
-_MANUAL_TOKEN_SETUP = ("token", "Paste your API token (get one with: calctl.sh token)", "eyJ...")
-
-
-class LoginChoiceScreen(Screen):
-    """First screen shown once an API server is configured but no token is —
-    offers a real Google login (opens the browser) or the calctl.sh-based
-    manual paste, unchanged from what SetupScreen always did on its own."""
-
-    def __init__(self, api_server: str, on_done: Callable[[], None]) -> None:
-        super().__init__()
-        self.api_server = api_server
-        self.on_done = on_done
-
-    def compose(self) -> ComposeResult:
-        with Center():
-            with Middle():
-                with Vertical(id="login-choice-box"):
-                    yield Label("Log in", id="login-choice-title")
-                    yield OptionList(id="login-choice-list")
-        yield Footer()
-
-    def on_mount(self) -> None:
-        option_list = self.query_one(OptionList)
-        option_list.add_options(
-            [
-                Option("Log in with Google (opens your browser)", id="google"),
-                Option("Paste a token manually", id="manual"),
-            ]
-        )
-        option_list.focus()
-
-    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
-        option_id = event.option.id
-        if option_id is None:
-            return
-        # Pop before pushing the next screen, same as every other transition in
-        # this codebase — keeps exactly one screen on the stack at a time, which
-        # is what lets on_done (ultimately app._advance) pop-then-push safely.
-        self.app.pop_screen()
-        if option_id == "google":
-            self.app.push_screen(LoginWaitScreen(self.api_server, self.on_done))
-        elif option_id == "manual":
-            self.app.push_screen(SetupScreen(*_MANUAL_TOKEN_SETUP, self.on_done))
-
-
 class LoginWaitScreen(Screen):
     """Starts a local loopback server, opens the system browser to
     /auth/login?port=<n>, and waits for the callback to carry the JWT back.
-    Escape cancels; both success and failure return to LoginChoiceScreen (or,
-    on success, hand off to on_done exactly like SetupScreen always did)."""
+    This is the only login path the TUI offers — Google auth already covers
+    everything a manual-token dev shortcut used to (that path was removed
+    outright, not just hidden, once this one was working end to end).
+    Escape cancels; both cancelling and a timeout just retry (there's no
+    other screen left to fall back to); success hands off to on_done exactly
+    like SetupScreen always did."""
 
     BINDINGS = [("escape", "cancel", "Cancel")]
     TIMEOUT_SECONDS = 300
@@ -183,9 +142,9 @@ class LoginWaitScreen(Screen):
             # beat behind it) has nothing left to do.
             return
         if token is None:
-            self.notify("Login timed out or failed.", severity="error")
+            self.notify("Login timed out or failed. Trying again.", severity="error")
             self.app.pop_screen()
-            self.app.push_screen(LoginChoiceScreen(self.api_server, self.on_done))
+            self.app.push_screen(LoginWaitScreen(self.api_server, self.on_done))
             return
         cfg = config.load()
         cfg["token"] = token
@@ -200,7 +159,7 @@ class LoginWaitScreen(Screen):
     def action_cancel(self) -> None:
         self._cancelled.set()
         self.app.pop_screen()
-        self.app.push_screen(LoginChoiceScreen(self.api_server, self.on_done))
+        self.app.push_screen(LoginWaitScreen(self.api_server, self.on_done))
 
 
 class TimezoneScreen(Screen):
@@ -496,6 +455,7 @@ class EventListScreen(Screen):
                 on_themes=self.action_themes,
                 on_toggle_clock=self.action_toggle_clock,
                 on_toggle_layout=self.action_toggle_layout,
+                on_logout=self.action_logout,
             )
         )
 
@@ -504,6 +464,37 @@ class EventListScreen(Screen):
 
     def action_change_timezone(self) -> None:
         self.app.push_screen(TimezoneScreen(self.app.pop_screen))
+
+    def action_logout(self) -> None:
+        self.app.push_screen(
+            ConfirmScreen(
+                "Log out?\n\n"
+                "The server forgets its stored copy of your Google credentials — "
+                "calendar-api won't be able to access your calendar again until you "
+                "log in with Google here. This does not revoke access on Google's own "
+                "end (Google Account -> Security -> Third-party access, if you want "
+                "to remove it there too).\n\n"
+                "Type yes to confirm.",
+                on_confirm=self._perform_logout,
+            )
+        )
+
+    def _perform_logout(self) -> None:
+        cfg = config.load()
+        try:
+            api.logout(config.api_server(cfg), config.token(cfg))
+        except api.ApiError as e:
+            self.notify(str(e), severity="error")
+            return
+        cfg["token"] = ""
+        config.save(cfg)
+        # This screen is never popped here — it stays on the stack underneath,
+        # same trick as action_change_timezone/action_themes above, so returning
+        # from a successful login just pops back down to it directly, keeping
+        # the current filter/layout instead of rebuilding the screen from
+        # scratch. on_done=self.app.pop_screen is the exact contract
+        # LoginWaitScreen/SetupScreen already rely on elsewhere (app.py).
+        self.app.push_screen(LoginWaitScreen(config.api_server(cfg), self.app.pop_screen))
 
 
 class OptionsScreen(Screen):
@@ -524,12 +515,14 @@ class OptionsScreen(Screen):
         on_themes: Callable[[], None],
         on_toggle_clock: Callable[[], None],
         on_toggle_layout: Callable[[], None],
+        on_logout: Callable[[], None],
     ) -> None:
         super().__init__()
         self.on_timezone = on_timezone
         self.on_themes = on_themes
         self.on_toggle_clock = on_toggle_clock
         self.on_toggle_layout = on_toggle_layout
+        self.on_logout = on_logout
 
     def compose(self) -> ComposeResult:
         with Center():
@@ -547,6 +540,7 @@ class OptionsScreen(Screen):
                 Option("Themes", id="themes"),
                 Option("Toggle clock on/off", id="clock"),
                 Option("Toggle layout (agenda/table)", id="layout"),
+                Option("Logout", id="logout"),
                 Option("Exit", id="exit"),
             ]
         )
@@ -568,6 +562,8 @@ class OptionsScreen(Screen):
             self.on_toggle_clock()
         elif option_id == "layout":
             self.on_toggle_layout()
+        elif option_id == "logout":
+            self.on_logout()
 
     def action_cancel(self) -> None:
         self.app.pop_screen()

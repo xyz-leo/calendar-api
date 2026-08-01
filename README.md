@@ -22,6 +22,24 @@ This README currently documents what's needed to set up and run the project.
 
 ---
 
+## Just want the TUI?
+
+If an instance of this API is already running somewhere (your own deployment, or someone else's)
+and you only want the terminal client, none of the rest of this README applies to you — skip
+straight to [`tui/README.md`](tui/README.md). The short version:
+
+```bash
+git clone <this repo>
+cd calendar-api
+uv tool install --editable ./tui
+calendar-tui
+```
+
+First run asks for the API's URL and your timezone, then opens Google login in your browser.
+That's the entire setup — no Docker, no Google Cloud project, none of the steps below.
+
+---
+
 ## Prerequisites
 
 ### System dependencies
@@ -89,8 +107,15 @@ boot and persists them in `data/.secrets.env`. Nothing to do here.
 
 ## Running it
 
+There are two `docker-compose` files — which one you want depends on what you're doing:
+
+- **`docker-compose.dev.yml`** — local development. Use this one.
+- **`docker-compose.yml`** (no `-f` flag needed) — production. Expects an external `shared_proxy`
+  Docker network and a reverse proxy in front of it; not something a fresh local clone has set up,
+  so don't reach for this unless you're actually deploying.
+
 ```bash
-docker compose up --build -d
+docker compose -f docker-compose.dev.yml up --build -d
 ```
 
 That's the whole setup — it builds the image, installs dependencies, and starts the API in the
@@ -101,15 +126,21 @@ curl http://localhost:8088/health
 # {"status":"ok"}
 ```
 
-Application code is bind-mounted into the container and the server runs with auto-reload, so
-editing files under `app/` takes effect immediately — no rebuild needed. A rebuild
-(`docker compose up --build -d` again) is only required after changing dependencies in
+Application code is bind-mounted into the container, so editing files under `app/` is reflected on
+disk immediately — but the server itself doesn't auto-reload, so it needs restarting to actually
+pick the change up:
+
+```bash
+docker compose -f docker-compose.dev.yml restart api
+```
+
+A full rebuild (`up --build -d` again) is only needed after changing dependencies in
 `pyproject.toml`.
 
 To stop it:
 
 ```bash
-docker compose down
+docker compose -f docker-compose.dev.yml down
 ```
 
 The SQLite database file lives under `./data`, mounted into the container so it survives restarts
@@ -121,14 +152,14 @@ No local Python or `uv` install is needed for this either — run it inside the 
 which updates `pyproject.toml` and `uv.lock` on your host directly (they're bind-mounted):
 
 ```bash
-docker compose exec api uv add <package>
-docker compose up --build -d   # rebuild so the image picks it up
+docker compose -f docker-compose.dev.yml exec api uv add <package>
+docker compose -f docker-compose.dev.yml up --build -d   # rebuild so the image picks it up
 ```
 
 ### Running tests
 
 ```bash
-docker compose exec api sh -c 'set -a; . /app/data/.secrets.env; set +a; uv run python -m pytest'
+docker compose -f docker-compose.dev.yml exec api sh -c 'set -a; . /app/data/.secrets.env; set +a; uv run python -m pytest'
 ```
 
 Sourcing `.secrets.env` first is only needed because `app.config.Settings` loads `JWT_SECRET`/

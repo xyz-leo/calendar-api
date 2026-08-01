@@ -1,7 +1,7 @@
 from textual.app import App
 
 from . import config, theme as theme_module
-from .screens import EventListScreen, LoginChoiceScreen, SetupScreen, TimezoneScreen
+from .screens import EventListScreen, LoginWaitScreen, SetupScreen, TimezoneScreen
 
 
 class CalendarTUI(App):
@@ -23,7 +23,7 @@ class CalendarTUI(App):
         self.theme = wanted if wanted in self.available_themes else theme.name
         self.push_screen(self._next_screen())
 
-    def _next_screen(self) -> SetupScreen | LoginChoiceScreen | TimezoneScreen | EventListScreen:
+    def _next_screen(self) -> SetupScreen | LoginWaitScreen | TimezoneScreen | EventListScreen:
         cfg = config.load()
         if not config.api_server(cfg):
             return SetupScreen(
@@ -35,7 +35,7 @@ class CalendarTUI(App):
         if not config.timezone(cfg):
             return TimezoneScreen(self._advance, cancellable=False)
         if not config.token(cfg):
-            return LoginChoiceScreen(config.api_server(cfg), self._advance)
+            return LoginWaitScreen(config.api_server(cfg), self._advance)
         return EventListScreen()
 
     def _advance(self) -> None:

@@ -37,3 +37,7 @@ def update_event(api_server: str, token: str, event_id: str, payload: dict) -> d
 
 def delete_event(api_server: str, token: str, event_id: str) -> None:
     _request("DELETE", api_server, token, f"/events/{event_id}", 204)
+
+
+def logout(api_server: str, token: str) -> None:
+    _request("POST", api_server, token, "/auth/logout", 200)
