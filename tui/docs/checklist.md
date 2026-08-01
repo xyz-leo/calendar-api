@@ -1,7 +1,24 @@
 # Known gaps / not done yet
 
-Deploying the TUI and the real OAuth login flow (replacing the `calctl.sh token`
-stopgap) are tracked separately and aren't included here.
+- **Login token delivery only works for the TUI.** `/auth/callback`'s two response
+  modes — plain JSON, or the `127.0.0.1:<port>` loopback redirect — only serve a
+  browser being copy-pasted from and a local CLI/TUI respectively. A real website
+  or mobile client would each need their own delivery mechanism, neither of which
+  exists yet:
+  - **Website** — `/auth/callback` would need to set the JWT via `Set-Cookie`
+    (`HttpOnly`, `Secure`, `SameSite`) instead of returning it as JSON, so
+    JavaScript never touches the token directly (keeps it safe from XSS). This
+    also means adding CSRF protection, since a cookie gets attached to requests
+    automatically instead of being explicitly set in an `Authorization` header
+    the way the TUI does it now.
+  - **Mobile** — needs a redirect the OS itself can route to the installed app:
+    either a custom URL scheme (`calendarapp://callback`) or, better, a
+    Universal Link/App Link (verified ownership of a real `https://` URL, so a
+    different app can't register the same scheme and steal the redirect). Modern
+    practice also runs the actual login page through an OS-owned session
+    (`ASWebAuthenticationSession`/Chrome Custom Tabs) rather than an embedded
+    webview the app fully controls, so the app itself never has a chance to see
+    or phish the Google password field.
 
 - **No automated tests.** Everything has been verified manually (or with throwaway
   headless scripts) against the real Docker API during development. None of that is

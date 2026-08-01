@@ -180,3 +180,7 @@ uv run calendar-tui
 
 Runs against the local venv `uv` manages for this subproject, same source as the installed
 command.
+
+## Screenshots
+
+...

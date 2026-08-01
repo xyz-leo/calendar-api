@@ -17,8 +17,11 @@ CalendarService      — talks to Google, returns our own Event objects
 Google Calendar API
 ```
 
-**Status**: early development. Architecture is defined; the application scaffold is in progress.
-This README currently documents what's needed to set up and run the project.
+**Status**: complete and in real use. Full event CRUD, recurring events, date-range filtering,
+and real Google OAuth login — including a browser-based loopback flow so the terminal client
+never needs a manual token — are all built, tested, and running against a real production
+deployment behind a reverse proxy, on its own domain, with real TLS. This README documents what's
+needed to set up and run it, whether that's your own local dev instance or a fresh deployment.
 
 ---
 
