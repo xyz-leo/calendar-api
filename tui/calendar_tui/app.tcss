@@ -110,6 +110,46 @@ Screen {
     background: $panel;
 }
 
+#events-agenda {
+    height: 1fr;
+    max-height: 1000;
+    background: $surface;
+    scrollbar-color: $primary-darken-3;
+    scrollbar-background: $panel;
+    scrollbar-size-vertical: 1;
+    scrollbar-size-horizontal: 0;
+}
+
+/* Day headers (and the blank line before each group) are disabled options —
+   OptionList grays those out by default, but here they're headings, not
+   unavailable choices, so they get the same treatment as other titles. */
+#events-agenda > .option-list--option-disabled {
+    color: $accent;
+    text-style: bold;
+}
+
+/* calendar-tui/ansi-dark/ansi-light all share $accent = gold (see theme.py) —
+   fine for titles, but gold-on-near-black reads as "just another yellow" for
+   a day header, easy to mistake for a warning. Neon green pulls it apart from
+   the rest of the gold accents and reads unambiguously as a date. Scoped to
+   these three themes only — neon-purple/neon-yellow and Textual's other
+   built-ins keep using $accent as-is. */
+.-theme-calendar-tui #events-agenda > .option-list--option-disabled,
+.-theme-ansi-dark #events-agenda > .option-list--option-disabled,
+.-theme-ansi-light #events-agenda > .option-list--option-disabled {
+    color: #39ff14;
+}
+
+/* No full-row background block for the current selection — the ">" marker
+   swapped into the row's own text (see EventListScreen.on_option_list_
+   option_highlighted) is the indicator, with the whole row's text recolored
+   to match the "Google Calendar Events" title ($accent) as the other cue. */
+#events-agenda > .option-list--option-highlighted {
+    background: $surface;
+    color: $accent;
+    text-style: bold;
+}
+
 /* --- EventDetailScreen --- */
 
 EventDetailScreen {
@@ -280,11 +320,13 @@ EventFormScreen {
    instead of reverting to full-brightness ruby. */
 
 .-theme-ansi-dark #events,
+.-theme-ansi-dark #events-agenda,
 .-theme-ansi-dark #styles-list,
 .-theme-ansi-dark #detail-box,
 .-theme-ansi-dark #form-box,
 .-theme-ansi-dark #timezone-list,
 .-theme-ansi-light #events,
+.-theme-ansi-light #events-agenda,
 .-theme-ansi-light #styles-list,
 .-theme-ansi-light #detail-box,
 .-theme-ansi-light #form-box,

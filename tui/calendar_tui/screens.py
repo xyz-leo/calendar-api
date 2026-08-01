@@ -1,4 +1,5 @@
 import re
+from datetime import date
 from typing import Callable
 
 from textual.app import ComposeResult
@@ -34,6 +35,27 @@ def _format_datetime(value: str, all_day: bool = False, show_year: bool = True) 
         return date_part
     hours_minutes = ":".join(time_part.split(":")[:2])
     return f"{date_part} — {hours_minutes}"
+
+
+def _day_header(value: str, show_year: bool) -> str:
+    """'2026-07-14T...' -> 'tue jul 14' ('tue jul 14 2026' if show_year)."""
+    day = date.fromisoformat(_OFFSET_RE.sub("", value)[:10])
+    fmt = "%a %b %-d %Y" if show_year else "%a %b %-d"
+    return day.strftime(fmt).lower()
+
+
+def _agenda_time_label(value: str, all_day: bool) -> str:
+    if all_day:
+        return "all-day"
+    _, _, time_part = _OFFSET_RE.sub("", value).partition("T")
+    return ":".join(time_part.split(":")[:2]) if time_part else "all-day"
+
+
+# Theme-colored bullet on every row; swapped for a theme-colored ">" (same
+# color as the title) on whichever row is currently highlighted, instead of a
+# full-row background highlight.
+_AGENDA_BULLET = "[$primary]●[/]"
+_AGENDA_CURSOR = "[$accent]>[/]"
 
 
 class SetupScreen(Screen):
@@ -134,18 +156,21 @@ class EventListScreen(Screen):
         ("t", "styles", "Styles"),
         ("c", "toggle_clock", "Clock"),
         ("z", "change_timezone", "Timezone"),
+        ("l", "toggle_layout", "Layout"),
     ]
 
     def __init__(self) -> None:
         super().__init__()
         self._events: dict[str, dict] = {}
         self._event_order: list[str] = []
+        self._agenda_highlighted: str | None = None
 
     def compose(self) -> ComposeResult:
         with Vertical(id="events-panel"):
             yield Clock(id="clock")
             yield Label("Google Calendar Events", id="events-title")
             yield DataTable(id="events")
+            yield OptionList(id="events-agenda")
         yield Footer()
 
     def on_mount(self) -> None:
@@ -154,6 +179,7 @@ class EventListScreen(Screen):
         table.cursor_type = "row"
         table.zebra_stripes = True
         self.action_refresh()
+        self._apply_layout(config.layout(config.load()))
 
     def action_toggle_clock(self) -> None:
         cfg = config.load()
@@ -161,6 +187,23 @@ class EventListScreen(Screen):
         cfg["show_clock"] = shown
         config.save(cfg)
         self.query_one(Clock).display = shown
+
+    def action_toggle_layout(self) -> None:
+        cfg = config.load()
+        new_layout = "agenda" if config.layout(cfg) == "table" else "table"
+        cfg["layout"] = new_layout
+        config.save(cfg)
+        self._apply_layout(new_layout)
+
+    def _apply_layout(self, layout: str) -> None:
+        table = self.query_one(DataTable)
+        agenda = self.query_one("#events-agenda", OptionList)
+        table.display = layout == "table"
+        agenda.display = layout == "agenda"
+        if layout == "agenda":
+            agenda.focus()
+        else:
+            table.focus()
 
     def on_resize(self) -> None:
         self._render_table()
@@ -177,6 +220,7 @@ class EventListScreen(Screen):
         self._events = {event["id"]: event for event in events}
         self._event_order = [event["id"] for event in events]
         self._render_table()
+        self._render_agenda()
 
     def _description_width(self) -> int:
         table = self.query_one(DataTable)
@@ -204,6 +248,66 @@ class EventListScreen(Screen):
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         selected = self._events.get(event.row_key.value)
+        if selected is not None:
+            self.app.push_screen(EventDetailScreen(selected, on_change=self.action_refresh))
+
+    def _agenda_label(self, event: dict, marker: str) -> str:
+        time_label = _agenda_time_label(event["start"], event.get("all_day", False))
+        return f"  {marker} {time_label:<9} {event['summary']}"
+
+    def _render_agenda(self) -> None:
+        # Alternate presentation of the exact same data as the table — grouped
+        # by calendar day, day headers and the blank line before each group as
+        # disabled (unselectable) options, so up/down and Enter only ever land
+        # on real events. Relies on events already arriving in chronological
+        # order from the API: an all-day event's own internal timestamp is
+        # midnight, always earlier than any timed event the same day, so it
+        # naturally sorts first within its day with no extra sorting needed.
+        option_list = self.query_one("#events-agenda", OptionList)
+        option_list.clear_options()
+        self._agenda_highlighted = None
+        show_year = config.show_year(config.load())
+        current_day = None
+        for event_id in self._event_order:
+            event = self._events[event_id]
+            day = event["start"][:10]
+            if day != current_day:
+                if current_day is not None:
+                    option_list.add_option(Option(" ", disabled=True))
+                option_list.add_option(Option(_day_header(event["start"], show_year), disabled=True))
+                current_day = day
+            option_list.add_option(Option(self._agenda_label(event, _AGENDA_BULLET), id=event_id))
+        # OptionList doesn't auto-highlight anything until the first keypress —
+        # start on the first real event (skipping the leading day header) so
+        # there's always a visible cursor position, same as StylesScreen/
+        # TimezoneScreen already do. Setting .highlighted fires the same
+        # OptionHighlighted event a keypress would, so the "> " marker below
+        # still gets applied to it.
+        for index in range(option_list.option_count):
+            if not option_list.get_option_at_index(index).disabled:
+                option_list.highlighted = index
+                break
+
+    def on_option_list_option_highlighted(self, event: OptionList.OptionHighlighted) -> None:
+        # Swap the bullet for "> " on whichever row is current, instead of
+        # using OptionList's default full-row background highlight (see
+        # #events-agenda > .option-list--option-highlighted in app.tcss,
+        # which turns that background off).
+        option_list = event.option_list
+        if self._agenda_highlighted and self._agenda_highlighted in self._events:
+            previous = self._events[self._agenda_highlighted]
+            option_list.replace_option_prompt(
+                self._agenda_highlighted, self._agenda_label(previous, _AGENDA_BULLET)
+            )
+        new_id = event.option.id
+        if new_id and new_id in self._events:
+            option_list.replace_option_prompt(new_id, self._agenda_label(self._events[new_id], _AGENDA_CURSOR))
+        self._agenda_highlighted = new_id
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        if not event.option.id:
+            return
+        selected = self._events.get(event.option.id)
         if selected is not None:
             self.app.push_screen(EventDetailScreen(selected, on_change=self.action_refresh))
 

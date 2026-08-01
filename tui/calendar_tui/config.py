@@ -39,3 +39,7 @@ def timezone(config: dict) -> str | None:
 
 def show_year(config: dict) -> bool:
     return config.get("show_year", False)
+
+
+def layout(config: dict) -> str:
+    return config.get("layout", "agenda")

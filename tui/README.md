@@ -41,19 +41,44 @@ temporarily.
 
 To reconfigure permanently, delete `~/.config/calendar-tui/config.json` and run again.
 
-The event list shows Date, Summary, Location, and Description. Summary and Location are
-fixed-width; Description stretches to fill whatever width is left and reflows on terminal resize.
-Any text too long for its column is truncated with an ellipsis rather than overflowing — on a
-narrow terminal (80 columns or less) the whole table still fits without a horizontal scrollbar.
-Dates are shown as `YYYY-MM-DD — HH:MM`, with the UTC offset and seconds stripped (the event's own
-timezone field already covers the former; the latter is never meaningful here). All-day events
-show just `YYYY-MM-DD`, no time — they're stored internally as midnight, but there's no real
-"00:00" to show. The list also drops the year by default (`MM-DD — HH:MM`) since it's almost
+### Two list layouts
+
+Press **`l`** to switch between two ways of presenting the same events — the choice is remembered
+in `config.json["layout"]`.
+
+**agenda** (the default) groups events by day, most recent first: a day header, then one line per
+event — the time (or `all-day`) and the summary, a colored bullet marking each one. The
+highlighted event gets a `>` in place of the bullet and its text recolored, instead of a full-row
+highlight block. On `calendar-tui`, `ansi-dark`, and `ansi-light` (the three themes that share the
+gold accent below), day headers are neon green instead, so a date doesn't read as just another
+gold accent; every other theme uses its own accent color there.
+
+```
+sat aug 1
+  ● all-day   ir koba!
+  ● all-day   Rent Due
+
+mon aug 3
+  ● 03:00     Morning Run
+```
+
+**table** is the original dense view: Date, Summary, Location, and Description columns.
+Summary and Location are fixed-width; Description stretches to fill whatever width is left and
+reflows on terminal resize. Any text too long for its column is truncated with an ellipsis rather
+than overflowing — on a narrow terminal (80 columns or less) the whole table still fits without a
+horizontal scrollbar.
+
+In both layouts, dates are shown as `YYYY-MM-DD — HH:MM` (agenda splits date and time across the
+day header and the event line instead), with the UTC offset and seconds stripped — the event's
+own timezone field already covers the former, and the latter is never meaningful here. All-day
+events show no time at all — they're stored internally as midnight, but there's no real "00:00"
+to show. The **table** layout also drops the year by default (`MM-DD — HH:MM`) since it's almost
 always the current one — set `"show_year": true` in `config.json` to keep it. The detail screen
-(below) always shows the full date regardless. Press **`Enter`**
-on a selected event to see its full, untruncated details — description, location, start/end,
-all-day, status, and ID; press **`Enter`** (or `Esc`) again to go back. The detail box scales
-with the terminal (80% of its width, clamped to stay readable).
+(below) always shows the full date regardless.
+
+Press **`Enter`** on a selected event, in either layout, to see its full, untruncated details —
+description, location, start/end, all-day, status, and ID; press **`Enter`** (or `Esc`) again to
+go back. The detail box scales with the terminal (80% of its width, clamped to stay readable).
 
 A small live clock (local system time, `tty-clock`-style block digits) plus today's date sits
 above the list. Press **`c`** to show/hide it — the choice is remembered in
