@@ -19,6 +19,17 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.database import Base
+from app.rate_limit import limiter
+
+
+@pytest.fixture(autouse=True)
+def _reset_rate_limiter():
+    # The Limiter's in-memory counters live on one shared instance for the
+    # whole process — without this, hitting the same routes across dozens of
+    # tests would eventually trip RATE_LIMIT/AUTH_RATE_LIMIT and fail tests
+    # that have nothing to do with rate limiting itself.
+    limiter.reset()
+    yield
 
 
 @pytest.fixture

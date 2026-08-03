@@ -106,6 +106,12 @@ Notice there's no JWT signing key or token-encryption key to fill in — those a
 with nothing external depending on their value, so the container generates both itself on first
 boot and persists them in `data/.secrets.env`. Nothing to do here.
 
+Two more variables are optional (sensible defaults if you omit them): `RATE_LIMIT` (default
+`60/minute`, applies to every route) and `AUTH_RATE_LIMIT` (default `10/minute`, a stricter cap
+specifically on `/auth/login`/`/auth/callback`) — both are per-client-IP request caps, `"<count>/
+<period>"` strings. Change a value and restart the container to apply it; see
+`docs/architecture.md`'s "Rate limiting" section for details.
+
 ---
 
 ## Running it

@@ -5,6 +5,7 @@ from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from app.auth import LOOPBACK_PORT_COOKIE, get_current_user, logout
+from app.config import settings
 from app.main import app
 from app.models import User
 from app.security import create_access_token
@@ -120,3 +121,18 @@ def test_login_with_out_of_range_port_is_422(port):
     response = client.get("/auth/login", params={"port": port})
 
     assert response.status_code == 422
+
+
+def test_login_is_rate_limited_past_the_configured_threshold():
+    # AUTH_RATE_LIMIT (settings.auth_rate_limit) is the stricter override on
+    # /auth/login and /auth/callback specifically — parsed from the config
+    # value itself rather than hardcoding "10" so this doesn't silently stop
+    # testing anything real if that default is ever tuned.
+    limit_count = int(settings.auth_rate_limit.split("/")[0])
+    for _ in range(limit_count):
+        response = client.get("/auth/login")
+        assert response.status_code == 307
+
+    response = client.get("/auth/login")
+
+    assert response.status_code == 429

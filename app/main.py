@@ -1,12 +1,16 @@
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.auth import router as auth_router
 from app.database import Base, engine, get_db
 from app.events import router as events_router
+from app.rate_limit import limiter
 
 
 @asynccontextmanager
@@ -16,6 +20,14 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Calendar API", lifespan=lifespan)
+# app.state.limiter + this exception handler are what SlowAPIMiddleware and
+# every @limiter.limit(...) decorator actually rely on — the middleware alone
+# is not enough. default_limits from app/rate_limit.py (RATE_LIMIT in .env)
+# apply to every route automatically; individual routes can override with
+# their own @limiter.limit(...) (see app/auth.py's login/callback).
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
 app.include_router(auth_router)
 app.include_router(events_router)
 

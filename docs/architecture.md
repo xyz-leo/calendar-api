@@ -131,11 +131,30 @@ from the user's Google account.
 | Google refresh token rejected by Google (`RefreshError`) | same as above |
 | Google API `HttpError` | passed through for `404`/`403`/`401` with a clean message; anything else becomes `502` (`CalendarService._execute`) |
 | `range` combined with `from`/`to` on `GET /events` | `400` |
+| Rate limit exceeded (see below) | `429` |
+
+## Rate limiting
+
+`app/rate_limit.py` defines one shared [slowapi](https://github.com/laurentS/slowapi) `Limiter`,
+keyed by client IP (`slowapi.util.get_remote_address`), with in-memory counters — fine for this
+app's single-container deployment, but note that counters reset on restart and wouldn't be shared
+across multiple replicas if this were ever scaled horizontally.
+
+- `RATE_LIMIT` (`Settings.rate_limit`, default `"60/minute"`) is passed as the `Limiter`'s
+  `default_limits` and applies automatically to every route via `SlowAPIMiddleware`
+  (registered in `app/main.py`), with no per-route decorator needed.
+- `AUTH_RATE_LIMIT` (`Settings.auth_rate_limit`, default `"10/minute"`) overrides that default
+  specifically on `/auth/login` and `/auth/callback` (`@limiter.limit(settings.auth_rate_limit)`
+  in `app/auth.py`) — the more common target for abuse (credential stuffing, hammering the OAuth
+  flow) gets a tighter ceiling than routine event CRUD.
+- Both are `"<count>/<period>"` strings parsed by the `limits` library (`second`/`minute`/`hour`/
+  `day`, singular or plural). Changing either in `.env` takes effect on the next container
+  restart — `Settings` is loaded once at import time, not re-read live.
 
 ## Configuration
 
 All settings are environment variables, loaded once at import time by `app/config.py`
-(`Settings`); the process fails to start if any is missing.
+(`Settings`); the process fails to start if any of the ones below without a default is missing.
 
 | Variable | Notes |
 |---|---|
@@ -145,21 +164,8 @@ All settings are environment variables, loaded once at import time by `app/confi
 | `DATABASE_URL` | SQLAlchemy connection string. |
 | `JWT_SECRET` | HS256 signing key. Auto-generated on first container boot (`docker-entrypoint.sh`), persisted in `data/.secrets.env`. Not user-supplied. |
 | `TOKEN_ENCRYPTION_KEY` | Fernet key (32 bytes, base64-urlsafe). Same auto-generation as above. |
-
-## Known limitations
-
-- No database migration tooling. Schema changes to an existing deployment require a manual
-  `ALTER TABLE` (or equivalent); `create_all` only creates tables that don't exist yet.
-- `POST /auth/logout` discards this app's copy of the Google grant; it does not revoke the grant
-  on Google's side.
-- Switching an existing event between all-day and timed via `PATCH` fails on Google's side (`400
-  Invalid start time`) — Google merges the `start`/`end` sub-objects field-by-field rather than
-  replacing them, so a leftover `date` plus a newly-sent `dateTime` conflict. Delete and recreate
-  instead.
-- Out of scope by design, not by omission: event attendees/invitations, free/busy queries, and
-  general multi-calendar support (the one exception is the holiday calendar merged into
-  `list_events`, see Overview above — it's read-only and not user-configurable). This project is a
-  normalized wrapper around one calendar's events, not a general Google Calendar client.
+| `RATE_LIMIT` | Optional, default `"60/minute"`. See Rate limiting above. |
+| `AUTH_RATE_LIMIT` | Optional, default `"10/minute"`. See Rate limiting above. |
 
 ## Development, testing, and CI
 

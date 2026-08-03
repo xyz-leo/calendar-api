@@ -10,6 +10,11 @@ Authorization: Bearer <token>
 where `<token>` is the JWT returned by `/auth/callback`. See `docs/architecture.md` for the
 session model. On `401`, re-authenticate via `/auth/login`.
 
+Every route is rate-limited per client IP — `429` once exceeded. `/auth/login` and
+`/auth/callback` use a stricter limit (`AUTH_RATE_LIMIT`, default `10/minute`) than everything else
+(`RATE_LIMIT`, default `60/minute`); see `docs/architecture.md`'s "Rate limiting" section for how
+to change either via `.env`.
+
 ---
 
 ## Schemas

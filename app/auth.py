@@ -11,6 +11,7 @@ from app.config import settings
 from app.database import get_db
 from app.google_oauth import build_flow
 from app.models import User
+from app.rate_limit import limiter
 from app.security import create_access_token, decode_access_token, encrypt_token
 
 router = APIRouter()
@@ -23,7 +24,10 @@ LOOPBACK_PORT_COOKIE = "oauth_loopback_port"
 
 
 @router.get("/auth/login")
-def login(port: int | None = Query(default=None, ge=1024, le=65535)) -> RedirectResponse:
+@limiter.limit(settings.auth_rate_limit)
+def login(
+    request: Request, port: int | None = Query(default=None, ge=1024, le=65535)
+) -> RedirectResponse:
     flow = build_flow()
     authorization_url, state = flow.authorization_url(
         access_type="offline",
@@ -49,6 +53,7 @@ def login(port: int | None = Query(default=None, ge=1024, le=65535)) -> Redirect
 
 
 @router.get("/auth/callback")
+@limiter.limit(settings.auth_rate_limit)
 def callback(
     request: Request, code: str, state: str, db: Session = Depends(get_db)
 ) -> Response:
