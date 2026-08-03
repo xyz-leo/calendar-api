@@ -97,3 +97,4 @@ class Event(BaseModel):
     recurrence: list[str] | None = None
     recurring_event_id: str | None = None
     all_day: bool = False
+    is_holiday: bool = False

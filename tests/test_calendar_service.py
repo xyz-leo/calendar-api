@@ -1,13 +1,14 @@
 import pytest
 from fastapi import HTTPException
 
-from app.calendar_service import CalendarService
+from app.calendar_service import HOLIDAY_CALENDAR_ID, CalendarService
 from tests.conftest import FakeGoogleClient, make_http_error, raw_all_day_event, raw_timed_event
 
 
 def test_list_events_normalizes_timed_event():
     client = FakeGoogleClient()
     client.queue("list", result={"items": [raw_timed_event()]})
+    client.queue("list", result={"items": []})  # holiday calendar
     service = CalendarService(client)
 
     events = service.list_events()
@@ -15,12 +16,14 @@ def test_list_events_normalizes_timed_event():
     assert len(events) == 1
     assert events[0].id == "evt1"
     assert events[0].all_day is False
+    assert events[0].is_holiday is False
     assert str(events[0].start) == "2026-08-15 10:00:00"
 
 
 def test_list_events_normalizes_all_day_event():
     client = FakeGoogleClient()
     client.queue("list", result={"items": [raw_all_day_event()]})
+    client.queue("list", result={"items": []})  # holiday calendar
     service = CalendarService(client)
 
     events = service.list_events()
@@ -35,6 +38,7 @@ def test_list_events_follows_pagination():
     client = FakeGoogleClient()
     client.queue("list", result={"items": [raw_timed_event("a")], "nextPageToken": "page2"})
     client.queue("list", result={"items": [raw_timed_event("b")]})
+    client.queue("list", result={"items": []})  # holiday calendar
     service = CalendarService(client)
 
     events = service.list_events()
@@ -49,6 +53,7 @@ def test_list_events_passes_time_bounds_to_google():
 
     client = FakeGoogleClient()
     client.queue("list", result={"items": []})
+    client.queue("list", result={"items": []})  # holiday calendar
     service = CalendarService(client)
     time_min = datetime.datetime(2026, 8, 1, tzinfo=datetime.timezone.utc)
     time_max = datetime.datetime(2026, 8, 31, tzinfo=datetime.timezone.utc)
@@ -64,6 +69,7 @@ def test_list_events_passes_time_bounds_to_google():
 def test_list_events_omits_bounds_when_not_given():
     client = FakeGoogleClient()
     client.queue("list", result={"items": []})
+    client.queue("list", result={"items": []})  # holiday calendar
     service = CalendarService(client)
 
     service.list_events()
@@ -71,6 +77,109 @@ def test_list_events_omits_bounds_when_not_given():
     _, kwargs = client.calls[0]
     assert "timeMin" not in kwargs
     assert "timeMax" not in kwargs
+
+
+def test_list_events_merges_and_tags_holiday_calendar():
+    client = FakeGoogleClient()
+    client.queue("list", result={"items": [raw_timed_event("own", start="2026-08-15T10:00:00", end="2026-08-15T11:00:00")]})
+    client.queue("list", result={"items": [raw_all_day_event("holiday1", "Independence Day", start="2026-08-01", end="2026-08-02")]})
+    service = CalendarService(client)
+
+    events = service.list_events()
+
+    assert {e.id: e.is_holiday for e in events} == {"own": False, "holiday1": True}
+    # merged and sorted chronologically, not just concatenated in fetch order
+    assert [e.id for e in events] == ["holiday1", "own"]
+    assert client.calls[1][1]["calendarId"] == "en.brazilian#holiday@group.v.calendar.google.com"
+
+
+def test_list_events_sorts_mixed_aware_and_naive_datetimes():
+    # Regression test: a real Google timed event carries an explicit UTC
+    # offset (unlike test_list_events_merges_and_tags_holiday_calendar's bare
+    # "own" event above, which happens to parse naive and never exercised
+    # this) and normalizes to a timezone-aware datetime, while every all-day
+    # event (every holiday event) normalizes naive — sorting the merged list
+    # used to crash with "can't compare offset-naive and offset-aware
+    # datetimes" before _sort_key existed.
+    client = FakeGoogleClient()
+    client.queue(
+        "list",
+        result={
+            "items": [
+                raw_timed_event("timed", start="2026-08-15T10:00:00-03:00", end="2026-08-15T11:00:00-03:00")
+            ]
+        },
+    )
+    client.queue("list", result={"items": [raw_all_day_event("holiday1", "Independence Day", start="2026-08-01", end="2026-08-02")]})
+    service = CalendarService(client)
+
+    events = service.list_events()  # must not raise TypeError
+
+    assert [e.id for e in events] == ["holiday1", "timed"]
+
+
+def test_list_events_holiday_fetch_failure_does_not_break_primary_events():
+    client = FakeGoogleClient()
+    client.queue("list", result={"items": [raw_timed_event()]})
+    client.queue("list", error=make_http_error(404))  # holiday calendar unreachable
+    service = CalendarService(client)
+
+    events = service.list_events()
+
+    assert [e.id for e in events] == ["evt1"]
+
+
+def test_list_events_caps_unbounded_holiday_fetch_to_current_year():
+    import datetime as dt
+
+    client = FakeGoogleClient()
+    client.queue("list", result={"items": []})  # primary
+    client.queue("list", result={"items": []})  # holiday
+    service = CalendarService(client)
+
+    service.list_events()  # no time_max given — this is the "2029 holidays" bug
+
+    _, holiday_kwargs = client.calls[1]
+    assert holiday_kwargs["calendarId"] == HOLIDAY_CALENDAR_ID
+    holiday_time_max = dt.datetime.fromisoformat(holiday_kwargs["timeMax"])
+    now = dt.datetime.now(dt.timezone.utc)
+    assert (holiday_time_max.year, holiday_time_max.month, holiday_time_max.day) == (now.year, 12, 31)
+
+
+def test_list_events_respects_an_explicit_time_max_for_holidays_too():
+    import datetime as dt
+
+    client = FakeGoogleClient()
+    client.queue("list", result={"items": []})
+    client.queue("list", result={"items": []})
+    service = CalendarService(client)
+    explicit_max = dt.datetime(2026, 8, 31, 23, 59, 59, tzinfo=dt.timezone.utc)
+
+    service.list_events(time_max=explicit_max)
+
+    _, holiday_kwargs = client.calls[1]
+    assert holiday_kwargs["timeMax"] == explicit_max.isoformat()
+
+
+def test_list_events_only_holidays_skips_the_primary_calendar():
+    client = FakeGoogleClient()
+    client.queue("list", result={"items": [raw_all_day_event("holiday1")]})
+    service = CalendarService(client)
+
+    events = service.list_events(only_holidays=True)
+
+    assert len(client.calls) == 1
+    assert client.calls[0][1]["calendarId"] == HOLIDAY_CALENDAR_ID
+    assert [e.id for e in events] == ["holiday1"]
+
+
+def test_list_events_only_holidays_reraises_on_fetch_failure():
+    client = FakeGoogleClient()
+    client.queue("list", error=make_http_error(404))
+    service = CalendarService(client)
+
+    with pytest.raises(HTTPException):
+        service.list_events(only_holidays=True)
 
 
 def test_get_event_normalizes():

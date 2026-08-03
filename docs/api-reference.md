@@ -29,6 +29,7 @@ session model. On `401`, re-authenticate via `/auth/login`.
 | `recurrence` | array[string] \| null | RFC 5545 rules; see `docs/rfc5545.md`. |
 | `recurring_event_id` | string \| null | Set on an expanded occurrence; points to the series. |
 | `all_day` | boolean | |
+| `is_holiday` | boolean | `true` for events merged in from Google's public Brazilian holiday calendar (`GET /events` only — read-only, not creatable/editable/deletable through this API). |
 
 ### `EventInput` (request body — `POST`/`PATCH /events`)
 
@@ -57,11 +58,20 @@ List events. Auth required.
 | `from` | date or datetime | Range start. Defaults to now if `to` is given without `from`. Naive values are assumed UTC. |
 | `to` | date or datetime | Range end. Unbounded if omitted. |
 | `range` | `today` \| `week` \| `month` | Convenience shortcut, always relative to the current time: `today` → end of today, `week` → +7 days, `month` → +30 days. |
+| `only_holidays` | boolean | Default `false`. When `true`, skips the primary calendar entirely and returns only the holiday calendar (still subject to `from`/`to`/`range` above). |
 
 With no parameters: everything from now onward, unbounded.
 
-**Response**: `200`, `list[Event]`. Pagination against Google is handled internally; the full
-result set for the requested range is always returned in one response.
+**Response**: `200`, `list[Event]`, sorted chronologically. Pagination against Google is handled
+internally; the full result set for the requested range is always returned in one response.
+Includes events from Google's public Brazilian holiday calendar merged in alongside the account's
+own primary-calendar events (`is_holiday: true` on those) — see `docs/architecture.md`. When the
+request has no explicit end bound, the holiday side of the fetch is still capped to December 31 of
+the current year — an unbounded query would otherwise pull every future instance of a recurring
+public calendar (2029, 2030, ... it has no natural end); an explicit `to`/`range` bound is honored
+as given instead. A hiccup fetching the holiday calendar is swallowed rather than failing the whole
+request, *unless* `only_holidays` is set — there, a fetch failure is the one thing being asked for,
+so it surfaces as an error instead of a misleading empty list.
 
 ---
 

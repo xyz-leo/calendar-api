@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 
 from fastapi import Depends, HTTPException
 from googleapiclient.discovery import build
@@ -12,6 +12,11 @@ from app.models import User
 from app.schemas import Event, EventInput
 
 CALENDAR_ID = "primary"
+# Google's public Brazilian holiday calendar — read-only, merged into list_events
+# alongside the user's own events. Not user-configurable yet (see
+# docs/architecture.md's Known limitations); events on it are never created,
+# updated, or deleted through this API, only ever listed.
+HOLIDAY_CALENDAR_ID = "en.brazilian#holiday@group.v.calendar.google.com"
 
 # Google's HttpError carries a real, meaningful status — pass the common ones
 # through as-is instead of letting every Google hiccup surface as a generic 500.
@@ -20,6 +25,21 @@ _STATUS_DETAIL = {
     403: "Google denied this request (check the granted scope/permissions)",
     401: "Google access expired or was revoked — log in with Google again",
 }
+
+
+def _sort_key(event: Event) -> datetime:
+    # Timed events normalize to timezone-aware datetimes (Google sends an
+    # offset); all-day events (every holiday event, plus any all-day event on
+    # the primary calendar) normalize to naive ones (see _normalize below) —
+    # Python's datetime comparison refuses to order aware against naive, so
+    # sorting the merged list needs a single common representation. Aware
+    # values collapse to their UTC-equivalent naive form; naive ones (already
+    # implicitly UTC — see all_day's timezone_name="UTC" below) pass through
+    # unchanged, landing both kinds on the same absolute timeline.
+    start = event.start
+    if start.tzinfo is not None:
+        return start.astimezone(timezone.utc).replace(tzinfo=None)
+    return start
 
 
 def _execute(request):
@@ -38,9 +58,51 @@ class CalendarService:
         self.google_client = google_client
 
     def list_events(
-        self, time_min: datetime | None = None, time_max: datetime | None = None
+        self,
+        time_min: datetime | None = None,
+        time_max: datetime | None = None,
+        *,
+        only_holidays: bool = False,
     ) -> list[Event]:
-        params = {"calendarId": CALENDAR_ID, "singleEvents": True, "orderBy": "startTime"}
+        # An unbounded time_max would otherwise pull every future instance of a
+        # recurring public holiday calendar (2029, 2030, ... — it has no natural
+        # end), which is never what "everything upcoming" should mean for
+        # holidays specifically. Only kicks in when the caller didn't already
+        # supply their own end bound (an explicit from/to/range filter is
+        # respected as-is, same as for the primary calendar).
+        holiday_time_max = time_max
+        if holiday_time_max is None:
+            now = datetime.now(timezone.utc)
+            holiday_time_max = datetime(now.year, 12, 31, 23, 59, 59, tzinfo=timezone.utc)
+
+        events: list[Event] = []
+        if not only_holidays:
+            events = self._list_from_calendar(CALENDAR_ID, time_min, time_max, is_holiday=False)
+        try:
+            events.extend(
+                self._list_from_calendar(HOLIDAY_CALENDAR_ID, time_min, holiday_time_max, is_holiday=True)
+            )
+        except HTTPException:
+            # Normally the holiday calendar is a nice-to-have merged on top of the
+            # user's own events — a hiccup fetching it (Google outage, calendar
+            # briefly unreachable) shouldn't take down the primary event list with
+            # it. But if holidays are literally the only thing being asked for,
+            # silently returning an empty list would misrepresent "couldn't fetch
+            # holidays" as "no holidays" — let it surface instead.
+            if only_holidays:
+                raise
+        events.sort(key=_sort_key)
+        return events
+
+    def _list_from_calendar(
+        self,
+        calendar_id: str,
+        time_min: datetime | None,
+        time_max: datetime | None,
+        *,
+        is_holiday: bool,
+    ) -> list[Event]:
+        params = {"calendarId": calendar_id, "singleEvents": True, "orderBy": "startTime"}
         if time_min is not None:
             params["timeMin"] = time_min.isoformat()
         if time_max is not None:
@@ -52,7 +114,7 @@ class CalendarService:
             if page_token:
                 params["pageToken"] = page_token
             raw = _execute(self.google_client.events().list(**params))
-            events.extend(self._normalize(e) for e in raw.get("items", []))
+            events.extend(self._normalize(e, is_holiday=is_holiday) for e in raw.get("items", []))
             page_token = raw.get("nextPageToken")
             if not page_token:
                 break
@@ -83,7 +145,7 @@ class CalendarService:
             self.google_client.events().delete(calendarId=CALENDAR_ID, eventId=event_id)
         )
 
-    def _normalize(self, raw: dict) -> Event:
+    def _normalize(self, raw: dict, *, is_holiday: bool = False) -> Event:
         # All-day events (e.g. birthdays, holidays) are represented by Google with a
         # bare "date" (no time, no timezone — "all day" has no specific hour). Timed
         # events use "dateTime" instead. Both must be handled: a calendar with even
@@ -112,6 +174,7 @@ class CalendarService:
             recurrence=raw.get("recurrence"),
             recurring_event_id=raw.get("recurringEventId"),
             all_day=all_day,
+            is_holiday=is_holiday,
         )
 
 

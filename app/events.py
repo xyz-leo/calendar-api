@@ -48,10 +48,11 @@ def list_events(
     from_: datetime | None = Query(None, alias="from"),
     to: datetime | None = Query(None),
     range_: Literal["today", "week", "month"] | None = Query(None, alias="range"),
+    only_holidays: bool = Query(False),
     service: CalendarService = Depends(get_calendar_service),
 ) -> list[Event]:
     time_min, time_max = _resolve_time_range(from_, to, range_)
-    return service.list_events(time_min=time_min, time_max=time_max)
+    return service.list_events(time_min=time_min, time_max=time_max, only_holidays=only_holidays)
 
 
 @router.get("/events/{event_id}")

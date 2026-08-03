@@ -6,7 +6,7 @@ from cryptography.fernet import Fernet
 from app.config import settings
 
 JWT_ALGORITHM = "HS256"
-JWT_LIFETIME = timedelta(hours=24)
+JWT_LIFETIME = timedelta(days=7)
 
 _fernet = Fernet(settings.token_encryption_key.encode())
 

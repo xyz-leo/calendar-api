@@ -56,10 +56,18 @@ highlight block. On `calendar-tui`, `ansi-dark`, and `ansi-light` (the three the
 gold accent below), day headers are neon green instead, so a date doesn't read as just another
 gold accent; every other theme uses its own accent color there.
 
+Google's public Brazilian holiday calendar is merged in alongside your own events (see the root
+`README.md`/`docs/api-reference.md` — the API does this, not the TUI). Holiday rows get a fixed
+neon orange bullet instead of the theme's usual color, and `holiday` in place of a time, so they always
+read as "not one of your own events" regardless of theme. They're read-only: `u`/`d` aren't
+offered on a holiday event's detail screen, since there's nothing on your own calendar to update
+or delete.
+
 ```
 sat aug 1
   ● all-day   Deploy app!
   ● all-day   Rent Due
+  ● holiday   Independence Day
 
 mon aug 3
   ● 03:00     Morning Run
@@ -93,6 +101,8 @@ Press **`f`** from the event list to open a small menu:
 
 - **Today** / **This week** / **This month** — quick presets, always counted forward from right
   now (not calendar-aligned — "this week" means the next 7 days, not Sunday-to-Saturday).
+- **Holidays only** — every one of this year's remaining holiday events (see above), no events of
+  your own.
 - **Pick month...** — type a month as `YYYY-MM` (e.g. `2026-08`) for the whole calendar month.
 - **Pick date...** — type a single day as `YYYY-MM-DD` for just that day.
 - **Clear filter** — only shown once a filter is active; goes back to the default "everything
@@ -107,12 +117,24 @@ same as event creation.
 
 Press **`o`** from the event list to open a menu grouping everything above that isn't an
 everyday action: **Timezone**, **Themes**, **Toggle clock on/off**, **Toggle layout
-(agenda/table)**, and **Exit**. Picking one of the first four runs the same thing its old
-dedicated key used to, then either opens the relevant picker or applies the toggle immediately
-and closes the menu; **Exit** quits the app outright. Timezone and Themes are both cancelable
-with **`Esc`** — backs out without changing anything, same either way — except during the very
-first run, before a timezone is set at all, where there's nothing yet to cancel back to and the
-key is disabled.
+(agenda/table)**, **Login**, **Logout**, and **Exit**. Picking one of the first four runs the
+same thing its old dedicated key used to, then either opens the relevant picker or applies the
+toggle immediately and closes the menu; **Exit** quits the app outright. Timezone and Themes are
+both cancelable with **`Esc`** — backs out without changing anything, same either way — except
+during the very first run, before a timezone is set at all, where there's nothing yet to cancel
+back to and the key is disabled.
+
+**Login** re-opens the same Google login screen used on first boot, for when the session JWT (or
+the Google refresh token behind it — see below) has expired or gone invalid and you're seeing
+`401` errors instead of your events. It doesn't log you out first — a successful login just
+replaces the saved token. **Logout** is the opposite: asks for a typed `yes`, then tells the
+server to forget its stored copy of your Google credentials and clears the local token, dropping
+you back to the login screen on next launch.
+
+The JWT itself is valid for **7 days** from whichever login minted it — matching how long Google
+itself keeps a refresh token alive while this app's OAuth consent screen is still in Testing
+status (see the root README). If you hit a `401` before then, either something logged you out
+server-side or the underlying Google grant was revoked; **Login** above is the fix either way.
 
 ### Creating, editing, and deleting events
 

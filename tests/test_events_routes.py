@@ -17,6 +17,7 @@ def teardown_function():
 def test_list_events_route_returns_normalized_events():
     fake = FakeGoogleClient()
     fake.queue("list", result={"items": [raw_timed_event(summary="Routed")]})
+    fake.queue("list", result={"items": []})  # holiday calendar
     client = _client_with_fake_google(fake)
 
     response = client.get("/events")
@@ -28,6 +29,7 @@ def test_list_events_route_returns_normalized_events():
 def test_list_events_route_range_today_reaches_google_with_time_bounds():
     fake = FakeGoogleClient()
     fake.queue("list", result={"items": []})
+    fake.queue("list", result={"items": []})  # holiday calendar
     client = _client_with_fake_google(fake)
 
     response = client.get("/events", params={"range": "today"})

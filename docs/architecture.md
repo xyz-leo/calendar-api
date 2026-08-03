@@ -6,8 +6,11 @@ calendar-api is a backend service that owns the relationship with Google Calenda
 hold a Google credential or see a Google response shape directly; they authenticate against this
 API and interact with a normalized `Event` representation.
 
-All event operations act on the authenticated user's **primary calendar only**
-(`CalendarService.CALENDAR_ID = "primary"`) — there is no multi-calendar support (see
+All writes (create/update/delete) and single-event lookups act on the authenticated user's
+**primary calendar only** (`CalendarService.CALENDAR_ID = "primary"`). `list_events` is the one
+exception: it also merges in read-only events from Google's public Brazilian holiday calendar
+(`CalendarService.HOLIDAY_CALENDAR_ID`), tagging each with `is_holiday: true` on the `Event`
+response — there is otherwise no general multi-calendar support (see
 [Known limitations](#known-limitations)).
 
 ```
@@ -153,9 +156,10 @@ All settings are environment variables, loaded once at import time by `app/confi
   Invalid start time`) — Google merges the `start`/`end` sub-objects field-by-field rather than
   replacing them, so a leftover `date` plus a newly-sent `dateTime` conflict. Delete and recreate
   instead.
-- Out of scope by design, not by omission: event attendees/invitations, multiple calendars,
-  free/busy queries. This project is a normalized wrapper around one calendar's events, not a
-  general Google Calendar client.
+- Out of scope by design, not by omission: event attendees/invitations, free/busy queries, and
+  general multi-calendar support (the one exception is the holiday calendar merged into
+  `list_events`, see Overview above — it's read-only and not user-configurable). This project is a
+  normalized wrapper around one calendar's events, not a general Google Calendar client.
 
 ## Development, testing, and CI
 

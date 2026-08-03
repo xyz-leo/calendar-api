@@ -62,6 +62,13 @@ def _agenda_time_label(value: str, all_day: bool) -> str:
 # full-row background highlight.
 _AGENDA_BULLET = "[$primary]●[/]"
 _AGENDA_CURSOR = "[$accent]>[/]"
+# Holiday events (merged in from Google's public holiday calendar, see
+# app/calendar_service.py's HOLIDAY_CALENDAR_ID) get a fixed color instead of
+# the theme's primary/accent, so they read as "not one of your own events"
+# consistently across every theme rather than blending in with the rest of
+# the agenda.
+_HOLIDAY_BULLET = "[#ff6a00]●[/]"
+_HOLIDAY_CURSOR = "[#ff6a00]>[/]"
 
 
 class SetupScreen(Screen):
@@ -296,9 +303,15 @@ class EventListScreen(Screen):
 
     def _apply_layout(self, layout: str) -> None:
         table = self.query_one(DataTable)
+        agenda_center = self.query_one("#agenda-center", Center)
         agenda = self.query_one("#events-agenda", OptionList)
         table.display = layout == "table"
-        agenda.display = layout == "agenda"
+        # Toggling just the OptionList's own display left its wrapping Center
+        # (#agenda-center) still occupying its height: 1fr slot in the panel's
+        # Vertical even while hidden — #events and #agenda-center both being
+        # 1fr split the available height 50/50 in table view instead of the
+        # table getting all of it. The wrapper itself has to be hidden too.
+        agenda_center.display = layout == "agenda"
         if layout == "agenda":
             agenda.focus()
         else:
@@ -360,8 +373,14 @@ class EventListScreen(Screen):
         if selected is not None:
             self.app.push_screen(EventDetailScreen(selected, on_change=self.action_refresh))
 
-    def _agenda_label(self, event: dict, marker: str) -> str:
-        time_label = _agenda_time_label(event["start"], event.get("all_day", False))
+    def _agenda_label(self, event: dict, *, highlighted: bool) -> str:
+        is_holiday = event.get("is_holiday", False)
+        if is_holiday:
+            marker = _HOLIDAY_CURSOR if highlighted else _HOLIDAY_BULLET
+            time_label = "holiday"
+        else:
+            marker = _AGENDA_CURSOR if highlighted else _AGENDA_BULLET
+            time_label = _agenda_time_label(event["start"], event.get("all_day", False))
         return f"  {marker} {time_label:<9} {event['summary']}"
 
     def _render_agenda(self) -> None:
@@ -387,7 +406,7 @@ class EventListScreen(Screen):
                 option_list.add_option(Option(_day_header(event["start"], show_year), disabled=True))
                 self._agenda_group_header[event_id] = option_list.option_count - 1
                 current_day = day
-            option_list.add_option(Option(self._agenda_label(event, _AGENDA_BULLET), id=event_id))
+            option_list.add_option(Option(self._agenda_label(event, highlighted=False), id=event_id))
         # OptionList doesn't auto-highlight anything until the first keypress —
         # start on the first real event (skipping the leading day header) so
         # there's always a visible cursor position, same as ThemesScreen/
@@ -408,11 +427,13 @@ class EventListScreen(Screen):
         if self._agenda_highlighted and self._agenda_highlighted in self._events:
             previous = self._events[self._agenda_highlighted]
             option_list.replace_option_prompt(
-                self._agenda_highlighted, self._agenda_label(previous, _AGENDA_BULLET)
+                self._agenda_highlighted, self._agenda_label(previous, highlighted=False)
             )
         new_id = event.option.id
         if new_id and new_id in self._events:
-            option_list.replace_option_prompt(new_id, self._agenda_label(self._events[new_id], _AGENDA_CURSOR))
+            option_list.replace_option_prompt(
+                new_id, self._agenda_label(self._events[new_id], highlighted=True)
+            )
         self._agenda_highlighted = new_id
         # OptionList.scroll_to_highlight (already run by the time this handler
         # fires) only scrolls the minimum needed to reveal the highlighted
@@ -455,6 +476,7 @@ class EventListScreen(Screen):
                 on_themes=self.action_themes,
                 on_toggle_clock=self.action_toggle_clock,
                 on_toggle_layout=self.action_toggle_layout,
+                on_login=self.action_login,
                 on_logout=self.action_logout,
             )
         )
@@ -464,6 +486,17 @@ class EventListScreen(Screen):
 
     def action_change_timezone(self) -> None:
         self.app.push_screen(TimezoneScreen(self.app.pop_screen))
+
+    def action_login(self) -> None:
+        # Re-runs the same Google login flow used on first boot — for when the
+        # JWT (or the Google refresh token behind it) has expired or gone
+        # invalid without an explicit logout, so there's a way back in besides
+        # deleting config.json by hand. Doesn't touch the current token first;
+        # a successful login just overwrites it, same as _perform_logout's own
+        # push below (on_done=self.app.pop_screen keeps this screen on the
+        # stack underneath, so success lands right back here, not a rebuild).
+        cfg = config.load()
+        self.app.push_screen(LoginWaitScreen(config.api_server(cfg), self.app.pop_screen))
 
     def action_logout(self) -> None:
         self.app.push_screen(
@@ -504,7 +537,10 @@ class OptionsScreen(Screen):
     first, then runs the matching EventListScreen action, same as it would
     have run directly from its old dedicated key. "Exit" is the one entry
     that doesn't pop first — it quits the whole app, so there's no screen
-    left to return to either way.
+    left to return to either way. "Login" re-runs the Google login flow on
+    demand (e.g. after the JWT expires or a 401 shows up mid-session) without
+    needing to log out first; "Logout" stays right below it since the two are
+    opposite ends of the same session lifecycle.
     """
 
     BINDINGS = [("escape", "cancel", "Cancel")]
@@ -515,6 +551,7 @@ class OptionsScreen(Screen):
         on_themes: Callable[[], None],
         on_toggle_clock: Callable[[], None],
         on_toggle_layout: Callable[[], None],
+        on_login: Callable[[], None],
         on_logout: Callable[[], None],
     ) -> None:
         super().__init__()
@@ -522,6 +559,7 @@ class OptionsScreen(Screen):
         self.on_themes = on_themes
         self.on_toggle_clock = on_toggle_clock
         self.on_toggle_layout = on_toggle_layout
+        self.on_login = on_login
         self.on_logout = on_logout
 
     def compose(self) -> ComposeResult:
@@ -540,6 +578,7 @@ class OptionsScreen(Screen):
                 Option("Themes", id="themes"),
                 Option("Toggle clock on/off", id="clock"),
                 Option("Toggle layout (agenda/table)", id="layout"),
+                Option("Login", id="login"),
                 Option("Logout", id="logout"),
                 Option("Exit", id="exit"),
             ]
@@ -562,6 +601,8 @@ class OptionsScreen(Screen):
             self.on_toggle_clock()
         elif option_id == "layout":
             self.on_toggle_layout()
+        elif option_id == "login":
+            self.on_login()
         elif option_id == "logout":
             self.on_logout()
 
@@ -617,6 +658,16 @@ class EventDetailScreen(Screen):
                     classes="detail-field",
                 )
         yield Footer()
+
+    def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        # Holiday events are merged in from Google's public holiday calendar
+        # (read-only, see app/calendar_service.py) — they don't exist on the
+        # primary calendar this app writes to, so update/delete would just
+        # 404. Hide both from the footer entirely rather than leaving a dead
+        # key, same pattern as TimezoneScreen's cancellable flag.
+        if action in ("update", "delete") and self.event.get("is_holiday", False):
+            return None
+        return True
 
     def action_back(self) -> None:
         self.app.pop_screen()
@@ -907,6 +958,7 @@ class FilterScreen(Screen):
     def on_mount(self) -> None:
         option_list = self.query_one(OptionList)
         options = [Option(label, id=f"range:{key}") for label, key in self._PRESETS]
+        options.append(Option("Holidays only", id="holidays"))
         options.append(Option("Pick month...", id="pick-month"))
         options.append(Option("Pick date...", id="pick-date"))
         if self.active_label is not None:
@@ -921,6 +973,12 @@ class FilterScreen(Screen):
         if option_id == "clear":
             self.app.pop_screen()
             self.on_apply(None, None)
+        elif option_id == "holidays":
+            self.app.pop_screen()
+            # No from/to bound needed — the API itself caps an otherwise-unbounded
+            # holiday fetch to the current year (see calendar_service.list_events),
+            # so "everything upcoming" here already means "this year's holidays".
+            self.on_apply({"only_holidays": True}, "Holidays only")
         elif option_id.startswith("range:"):
             key = option_id.split(":", 1)[1]
             label = next(label for label, k in self._PRESETS if k == key)
