@@ -8,10 +8,11 @@ from zoneinfo import ZoneInfo
 
 from textual import work
 from textual.app import ComposeResult
+from textual.binding import Binding
 from textual.containers import Center, Middle, Vertical, VerticalScroll
 from textual.geometry import Region
 from textual.screen import Screen
-from textual.widgets import DataTable, Footer, Input, Label, OptionList
+from textual.widgets import DataTable, Footer, Input, Label, OptionList, Static
 from textual.widgets.option_list import Option
 
 from . import api, config, oauth_login
@@ -248,9 +249,11 @@ def _truncate(text: str, max_length: int) -> str:
 class EventListScreen(Screen):
     BINDINGS = [
         ("r", "refresh", "Refresh"),
-        ("n", "create", "New"),
-        ("f", "filter", "Filter"),
+        ("c", "calendar", "Calendar"),
+        ("n", "create", "New event"),
         ("o", "options", "Options"),
+        ("f", "filter", "Filter"),
+        ("ctrl+f", "clear_filter", "Clear filter"),
     ]
 
     def __init__(self) -> None:
@@ -334,8 +337,25 @@ class EventListScreen(Screen):
         self._render_table()
         self._render_agenda()
 
+    def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        # "Clear filter" only makes sense once a filter is actually active —
+        # hide it from the footer entirely rather than leaving a dead key,
+        # same pattern TimezoneScreen/EventDetailScreen already use elsewhere.
+        if action == "clear_filter" and self._filter_label is None:
+            return None
+        return True
+
     def action_filter(self) -> None:
         self.app.push_screen(FilterScreen(self._filter_label, self._apply_filter))
+
+    def action_clear_filter(self) -> None:
+        self._apply_filter(None, None)
+
+    def action_calendar(self) -> None:
+        # Reuses the exact same callback FilterScreen's presets/pickers call —
+        # picking a day in the calendar is just another way to produce the same
+        # (params, label) pair "Pick date..." already does.
+        self.app.push_screen(CalendarScreen(self._apply_filter))
 
     def _apply_filter(self, params: dict | None, label: str | None) -> None:
         self._filter_params = params
@@ -1024,3 +1044,210 @@ class FilterScreen(Screen):
 
     def action_cancel(self) -> None:
         self.app.pop_screen()
+
+
+_CALENDAR_WEEKDAYS = "Su Mo Tu We Th Fr Sa"  # matches the Sunday-start weeks below
+_CALENDAR = calendar.Calendar(firstweekday=6)
+
+
+class CalendarScreen(Screen):
+    """Month-grid calendar, starting on the current month. Days with an event
+    (own or holiday) are colored; Enter on the highlighted day jumps the event
+    list straight to it — the exact same (params, label) pair FilterScreen's
+    "Pick date..." already produces, via the same on_apply callback.
+
+    Two cursor "modes" share the arrow keys: inside the day grid, Left/Right/
+    Up/Down move the highlighted day, and Up from the top row moves the
+    cursor onto the month name itself instead of wrapping. Once there,
+    Left/Right change month (Down moves back into the grid) — so unlike
+    inside the grid, where changing month needs Ctrl+Left/Ctrl+Right
+    explicitly, the header is where the plain arrows do it.
+    """
+
+    BINDINGS = [
+        ("escape", "cancel", "Cancel"),
+        ("enter", "select", "Jump to day"),
+        Binding("up", "cursor_up", "Up", show=False),
+        Binding("down", "cursor_down", "Down", show=False),
+        Binding("left", "cursor_left", "Left", show=False),
+        Binding("right", "cursor_right", "Right", show=False),
+        Binding("ctrl+left", "prev_month", "Prev month", show=False),
+        Binding("ctrl+right", "next_month", "Next month", show=False),
+    ]
+
+    def __init__(self, on_apply: Callable[[dict, str], None]) -> None:
+        super().__init__()
+        self.on_apply = on_apply
+        self._today = datetime.now(self._standard_timezone()).date()
+        self._year = self._today.year
+        self._month = self._today.month
+        self._cursor_mode = "grid"  # or "header"
+        self._weeks = self._build_weeks()
+        self._cursor_row, self._cursor_col = self._default_cursor()
+        self._event_days: set[int] = set()
+        self._holiday_days: set[int] = set()
+
+    def compose(self) -> ComposeResult:
+        with Center():
+            with Middle():
+                with Vertical(id="calendar-box"):
+                    yield Static(id="calendar-grid")
+        yield Footer()
+
+    def on_mount(self) -> None:
+        self._refresh_events()
+        self._update_grid()
+
+    def _standard_timezone(self) -> ZoneInfo:
+        return ZoneInfo(config.timezone(config.load()) or DEFAULT_TIMEZONE)
+
+    def _build_weeks(self) -> list[list[int]]:
+        # Each week is 7 ints, 0 for the padding days before the 1st / after
+        # the last day of the month — never a real day, never selectable.
+        return _CALENDAR.monthdayscalendar(self._year, self._month)
+
+    def _default_cursor(self) -> tuple[int, int]:
+        if self._year == self._today.year and self._month == self._today.month:
+            for row, week in enumerate(self._weeks):
+                if self._today.day in week:
+                    return row, week.index(self._today.day)
+        return 0, 0
+
+    def _refresh_events(self) -> None:
+        # One API call per month shown, filtered to that month's bounds —
+        # same bounds _submit_month above already computes for "Pick month...".
+        cfg = config.load()
+        server = config.api_server(cfg)
+        token = config.token(cfg)
+        tz = self._standard_timezone()
+        last_day = calendar.monthrange(self._year, self._month)[1]
+        from_ = datetime(self._year, self._month, 1, tzinfo=tz)
+        to = datetime(self._year, self._month, last_day, 23, 59, 59, tzinfo=tz)
+        try:
+            events = api.fetch_events(
+                server, token, params={"from": from_.isoformat(), "to": to.isoformat()}
+            )
+        except api.ApiError as e:
+            self.notify(str(e), severity="error")
+            events = []
+        self._event_days = set()
+        self._holiday_days = set()
+        month_prefix = f"{self._year:04d}-{self._month:02d}"
+        for event in events:
+            day_str = event["start"][:10]
+            if day_str[:7] != month_prefix:
+                continue  # a timed event near midnight at the month's edge, in a different offset
+            day = int(day_str[8:10])
+            if event.get("is_holiday"):
+                self._holiday_days.add(day)
+            else:
+                self._event_days.add(day)
+
+    def _update_grid(self) -> None:
+        month_label = date(self._year, self._month, 1).strftime("%B %Y").center(20)
+        if self._cursor_mode == "header":
+            lines = [f"[reverse]{month_label}[/]"]
+        else:
+            lines = [f"[$accent bold]{month_label}[/]"]
+        lines.append(f"[$accent]{_CALENDAR_WEEKDAYS}[/]")
+        for row, week in enumerate(self._weeks):
+            cells = []
+            for col, day in enumerate(week):
+                if day == 0:
+                    cells.append("  ")
+                    continue
+                text = f"{day:2d}"
+                is_cursor = (
+                    self._cursor_mode == "grid" and row == self._cursor_row and col == self._cursor_col
+                )
+                is_today = (
+                    day == self._today.day
+                    and self._year == self._today.year
+                    and self._month == self._today.month
+                )
+                if is_cursor:
+                    cells.append(f"[reverse]{text}[/]")
+                elif day in self._holiday_days:
+                    cells.append(f"[#ff6a00]{text}[/]")
+                elif day in self._event_days:
+                    cells.append(f"[$primary bold]{text}[/]")
+                elif is_today:
+                    cells.append(f"[$accent bold]{text}[/]")
+                else:
+                    cells.append(text)
+            lines.append(" ".join(cells))
+        self.query_one("#calendar-grid", Static).update("\n".join(lines))
+
+    def action_cancel(self) -> None:
+        self.app.pop_screen()
+
+    def action_select(self) -> None:
+        tz = self._standard_timezone()
+        if self._cursor_mode == "header":
+            # Same bounds FilterScreen's "Pick month..." already computes —
+            # selecting the month name is just another way to filter to the
+            # whole displayed month, no day needed.
+            last_day = calendar.monthrange(self._year, self._month)[1]
+            from_ = datetime(self._year, self._month, 1, tzinfo=tz)
+            to = datetime(self._year, self._month, last_day, 23, 59, 59, tzinfo=tz)
+            label = date(self._year, self._month, 1).strftime("%B %Y")
+            self.app.pop_screen()
+            self.on_apply({"from": from_.isoformat(), "to": to.isoformat()}, label)
+            return
+        day = self._weeks[self._cursor_row][self._cursor_col]
+        if day == 0:
+            return
+        picked = date(self._year, self._month, day)
+        from_ = datetime.combine(picked, time.min, tzinfo=tz)
+        to = datetime.combine(picked, time.max.replace(microsecond=0), tzinfo=tz)
+        label = picked.strftime("%b %-d, %Y").lower()
+        self.app.pop_screen()
+        self.on_apply({"from": from_.isoformat(), "to": to.isoformat()}, label)
+
+    def action_cursor_up(self) -> None:
+        if self._cursor_mode == "grid":
+            if self._cursor_row == 0:
+                self._cursor_mode = "header"
+            else:
+                self._cursor_row -= 1
+            self._update_grid()
+
+    def action_cursor_down(self) -> None:
+        if self._cursor_mode == "header":
+            self._cursor_mode = "grid"
+        else:
+            self._cursor_row = min(self._cursor_row + 1, len(self._weeks) - 1)
+        self._update_grid()
+
+    def action_cursor_left(self) -> None:
+        if self._cursor_mode == "header":
+            self._change_month(-1)
+        else:
+            self._cursor_col = max(self._cursor_col - 1, 0)
+            self._update_grid()
+
+    def action_cursor_right(self) -> None:
+        if self._cursor_mode == "header":
+            self._change_month(1)
+        else:
+            self._cursor_col = min(self._cursor_col + 1, 6)
+            self._update_grid()
+
+    def action_prev_month(self) -> None:
+        self._change_month(-1)
+
+    def action_next_month(self) -> None:
+        self._change_month(1)
+
+    def _change_month(self, delta: int) -> None:
+        month = self._month + delta
+        year = self._year
+        if month == 0:
+            month, year = 12, year - 1
+        elif month == 13:
+            month, year = 1, year + 1
+        self._year, self._month = year, month
+        self._weeks = self._build_weeks()
+        self._cursor_row = min(self._cursor_row, len(self._weeks) - 1)
+        self._refresh_events()
+        self._update_grid()

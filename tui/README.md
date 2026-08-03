@@ -108,10 +108,38 @@ Press **`f`** from the event list to open a small menu:
 - **Clear filter** — only shown once a filter is active; goes back to the default "everything
   upcoming" view.
 
+**`Ctrl+F`** does the same as "Clear filter" without opening the menu first — it only shows up in
+the footer once a filter is actually active, same condition as the menu entry above.
+
 The active filter shows in the title ("Google Calendar Events — This month") and applies to
 whichever layout you're in. It's not saved anywhere — every fresh launch starts back at the
 default unfiltered view. Month/date picks are interpreted in your standard timezone (see above),
 same as event creation.
+
+### Calendar view
+
+Press **`c`** from the event list for a month-grid calendar, starting on the current month. Days
+with an event are colored — your own in the theme's primary color, holidays in neon orange (same
+as the agenda view) — so you can spot a busy day at a glance before drilling in.
+
+```
+      August 2026
+Su Mo Tu We Th Fr Sa
+                   1
+ 2  3  4 [5] 6  7  8
+ 9 10 11 12 13 14 15
+16 17 18 19 20 21 22
+23 24 25 26 27 28 29
+30 31
+```
+
+Arrow keys move the highlighted day; `Enter` jumps the event list straight to it — the same filter
+"Pick date..." above already produces. Changing month works two ways: `Ctrl+Left`/`Ctrl+Right`
+always work, from anywhere in the grid; or move `Up` past the top row onto the month name itself,
+where the plain `Left`/`Right` arrows do the same thing (and `Down` moves back into the grid).
+`Enter` on the month name itself, instead of a day, filters to the whole displayed month — the
+same as "Pick month..." above.
+`Escape` closes the calendar without applying anything.
 
 ### Options menu
 
