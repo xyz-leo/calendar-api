@@ -72,6 +72,8 @@ _AGENDA_CURSOR = "[$accent]>[/]"
 _HOLIDAY_BULLET = "[#ff6a00]●[/]"
 _HOLIDAY_CURSOR = "[#ff6a00]>[/]"
 
+_REPO_URL = "https://github.com/xyz-leo/calendar-api"
+
 
 class SetupScreen(Screen):
     """Ask for a single missing config value, save it, then hand control back."""
@@ -111,17 +113,29 @@ class LoginWaitScreen(Screen):
     This is the only login path the TUI offers — Google auth already covers
     everything a manual-token dev shortcut used to (that path was removed
     outright, not just hidden, once this one was working end to end).
-    Escape cancels; both cancelling and a timeout just retry (there's no
-    other screen left to fall back to); success hands off to on_done exactly
-    like SetupScreen always did."""
 
-    BINDINGS = [("escape", "cancel", "Cancel")]
+    A timeout retries automatically (opens the browser again). Escape is a
+    real cancel, not a retry — it calls on_cancel, which defaults to just
+    popping this screen (fine whenever something's already underneath, e.g.
+    the re-login/post-logout call sites below). First boot has nothing
+    underneath yet, so app.py's call site passes its own on_cancel that
+    lands on an empty EventListScreen instead — see there for why.
+
+    Success hands off to on_done, exactly like SetupScreen always did."""
+
+    BINDINGS = [("escape", "cancel", "Cancel"), ("r", "open_readme", "Open README")]
     TIMEOUT_SECONDS = 300
 
-    def __init__(self, api_server: str, on_done: Callable[[], None]) -> None:
+    def __init__(
+        self,
+        api_server: str,
+        on_done: Callable[[], None],
+        on_cancel: Callable[[], None] | None = None,
+    ) -> None:
         super().__init__()
         self.api_server = api_server
         self.on_done = on_done
+        self.on_cancel = on_cancel
         self._cancelled = threading.Event()
 
     def compose(self) -> ComposeResult:
@@ -130,6 +144,23 @@ class LoginWaitScreen(Screen):
                 with Vertical(id="login-wait-box"):
                     yield Label("Waiting for you to finish in the browser...", id="login-wait-label")
                     yield Label("Press Escape to cancel.", id="login-wait-hint")
+                    yield Label(
+                        "If the owner of this server invited you, just log in — nothing else "
+                        "needed. Otherwise, to use this yourself: create a free Google Cloud "
+                        "project and add your own GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET to .env, "
+                        "then self-host. (Google blocks login for anyone not added as a test "
+                        "user on someone else's project.)",
+                        id="login-wait-notice",
+                    )
+                    # Text object with an explicit link style, not markup — see AboutScreen's
+                    # own link for why ("[link=...]" raises MarkupError on Textual's parser).
+                    yield Label(
+                        Text(
+                            "Press r to check the README on GitHub for more info",
+                            style=f"link {_REPO_URL} underline",
+                        ),
+                        id="login-wait-readme-link",
+                    )
         yield Footer()
 
     def on_mount(self) -> None:
@@ -153,7 +184,7 @@ class LoginWaitScreen(Screen):
         if token is None:
             self.notify("Login timed out or failed. Trying again.", severity="error")
             self.app.pop_screen()
-            self.app.push_screen(LoginWaitScreen(self.api_server, self.on_done))
+            self.app.push_screen(LoginWaitScreen(self.api_server, self.on_done, self.on_cancel))
             return
         cfg = config.load()
         cfg["token"] = token
@@ -167,8 +198,13 @@ class LoginWaitScreen(Screen):
 
     def action_cancel(self) -> None:
         self._cancelled.set()
-        self.app.pop_screen()
-        self.app.push_screen(LoginWaitScreen(self.api_server, self.on_done))
+        if self.on_cancel is not None:
+            self.on_cancel()
+        else:
+            self.app.pop_screen()
+
+    def action_open_readme(self) -> None:
+        webbrowser.open(_REPO_URL)
 
 
 class TimezoneScreen(Screen):
@@ -640,7 +676,6 @@ _ABOUT_TEXT = (
     "distraction-free, since that's where most programmers already spend their day. The web "
     "version brings the same look to any browser, mobile included, without Google's UI in the way."
 )
-_ABOUT_URL = "https://github.com/xyz-leo/calendar-api"
 
 
 class AboutScreen(Screen):
@@ -654,7 +689,7 @@ class AboutScreen(Screen):
         # Built as a Text object with an explicit link style, not markup ("[link=...]...[/link]")
         # — Textual's markup parser (distinct from Rich's own, which handles this fine) chokes on
         # a "//" right after the "=" in a link target and raises MarkupError.
-        link_text = Text(_ABOUT_URL, style=f"link {_ABOUT_URL} underline")
+        link_text = Text(_REPO_URL, style=f"link {_REPO_URL} underline")
         with Center():
             with Middle():
                 with Vertical(id="about-box"):
@@ -667,7 +702,7 @@ class AboutScreen(Screen):
         self.app.pop_screen()
 
     def action_open_link(self) -> None:
-        webbrowser.open(_ABOUT_URL)
+        webbrowser.open(_REPO_URL)
 
 
 _DETAIL_FIELDS = [

@@ -1,5 +1,9 @@
 # Calendar API
 
+I built this for myself, to manage my own calendar the way I wanted — not as a polished product
+for a general audience. You're welcome to use or fork it, but a few decisions here (test-user
+access being one) reflect that personal-project framing rather than a "designed for everyone" one.
+
 A backend service that owns the relationship with Google Calendar so that nothing else has to.
 Clients — web, TUI, mobile, third-party — talk only to this API. None of them ever hold a Google
 credential or see a Google response shape directly.
@@ -25,11 +29,28 @@ needed to set up and run it, whether that's your own local dev instance or a fre
 
 ---
 
+## Before either of these: a real limitation, not a technicality
+
+Both "just want the X?" sections below describe pointing a client at *a running instance* rather
+than setting one up yourself. That only actually works if you're logged into a Google account
+already added as a **test user** on that specific instance's Google Cloud project — every
+deployment's OAuth consent screen defaults to **Testing** status (see [Prerequisites](#prerequisites)
+below), and Google flatly refuses login for anyone not on that list, no exceptions, regardless of
+whether the client software itself is running fine. This isn't a per-project setting you can
+opt out of; it's how Google's OAuth consent screen works below "Published" status.
+
+Concretely: my own deployment is in Testing status and I'm not adding outside test users to it —
+pointing a client at it won't get you past Google's login screen. The two sections below apply if
+either you set up your own free Google Cloud project and add yourself as its test user (a step in
+Prerequisites, entirely under your own control), or someone running their own instance has
+specifically added your account to theirs.
+
+---
+
 ## Just want the TUI?
 
-If an instance of this API is already running somewhere (your own deployment, or someone else's)
-and you only want the terminal client, none of the rest of this README applies to you — skip
-straight to [`tui/README.md`](tui/README.md). The short version:
+Assuming the above is sorted, and you only want the terminal client, none of the rest of this
+README applies to you — skip straight to [`tui/README.md`](tui/README.md). The short version:
 
 ```bash
 git clone <this repo>
@@ -39,17 +60,19 @@ calendar-tui
 ```
 
 First run asks for the API's URL and your timezone, then opens Google login in your browser.
-That's the entire setup — no Docker, no Google Cloud project, none of the steps below.
+That's the entire client-side setup — no Docker, no Google Cloud project *on your machine*, none
+of the steps below (the Google Cloud project step still has to have happened somewhere, by
+someone, for whichever instance you're pointing at).
 
 ---
 
 ## Just want the web client?
 
-Even less setup than the TUI: the API serves its own web client at `/` — visit the API's URL
-(e.g. `https://calendar-api.learningsea.xyz`) in any modern browser, log in with Google, done. It's
-a single self-contained page (`app/static/index.html`, no build step, no separate deployment) —
-same-origin only by design (see `docs/architecture.md`'s Google OAuth section). Full event CRUD,
-same as the TUI: viewing, filtering, creating, editing, and deleting.
+Same condition as above applies here too. Assuming it's met, this is even less setup than the
+TUI: the API serves its own web client at `/` — visit that URL in any browser, log in with
+Google, done. It's a single self-contained page (`app/static/index.html`, no build step, no
+separate deployment) — same-origin only by design (see `docs/architecture.md`'s Google OAuth
+section). Full event CRUD, same as the TUI: viewing, filtering, creating, editing, and deleting.
 
 ---
 

@@ -84,6 +84,15 @@
   .login-box { max-width: 420px; width: 100%; text-align: center; }
   .brand { font-size: clamp(1.3rem, 5vw, 1.8rem); font-weight: 700; color: var(--accent); letter-spacing: 0.06em; margin-bottom: 0.5rem; }
   .hint { color: var(--fg); opacity: 0.85; margin-bottom: 1.5rem; line-height: 1.5; }
+  .login-notice {
+    margin: 1.5rem 0 0; padding-top: 1rem; border-top: 1px solid var(--panel);
+    color: var(--fg); opacity: 0.65; font-size: clamp(0.75rem, 2vw, 0.85rem); line-height: 1.5;
+  }
+  .login-readme-link {
+    display: block; margin-top: 0.75rem; color: var(--primary); font-weight: 700;
+    font-size: clamp(0.75rem, 2vw, 0.85rem);
+  }
+  .login-readme-link:hover { color: var(--accent); }
 
   /* --- Agenda --- */
   #agenda-screen { padding: clamp(0.5rem, 3vw, 1.5rem); padding-bottom: calc(76px + env(safe-area-inset-bottom)); }
@@ -230,6 +239,11 @@
       <div class="brand">calendar-tui</div>
       <p class="hint" id="login-message">Log in with your Google account to see your calendar.</p>
       <a class="btn" href="/auth/login">Log in with Google</a>
+      <p class="login-notice">If the owner of this server invited you, just log in above —
+        nothing else needed. Otherwise, to use this yourself: create a free Google Cloud project
+        and add your own GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET to .env, then self-host. (Google
+        blocks login for anyone not added as a test user on someone else's project.)</p>
+      <a class="login-readme-link" href="https://github.com/xyz-leo/calendar-api" target="_blank" rel="noopener noreferrer">Check the README on GitHub for more info</a>
     </div>
   </div>
 
@@ -1323,7 +1337,10 @@
         else if (currentOverlay === "review-overlay") document.getElementById("review-confirm-btn").click();
         else activateHighlighted(container);
       } else if (currentOverlay === "detail-overlay" && state.detailEvent && !state.detailEvent.is_holiday) {
-        if (e.key === "u") openEventForm(state.detailEvent);
+        // preventDefault matters here: openEventForm() focuses #form-summary synchronously, and
+        // without it the browser still inserts this same keypress into whatever now has focus —
+        // "u"/"n" would otherwise show up typed into the Summary field.
+        if (e.key === "u") { e.preventDefault(); openEventForm(state.detailEvent); }
         else if (e.key === "d") confirmDeleteEvent(state.detailEvent);
       }
       return;
@@ -1335,7 +1352,7 @@
     if (screen === "agenda-screen") {
       if (e.key === "r") actionRefresh();
       else if (e.key === "c") openCalendarScreen();
-      else if (e.key === "n") openEventForm(null);
+      else if (e.key === "n") { e.preventDefault(); openEventForm(null); }
       else if (e.key === "o") openOptionsOverlay();
       else if (e.key === "a") openAboutOverlay();
       else if (e.key === "f") openFilterOverlay();

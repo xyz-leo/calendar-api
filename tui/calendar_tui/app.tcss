@@ -57,6 +57,22 @@ Screen {
     color: $foreground;
 }
 
+#login-wait-notice {
+    width: 100%;
+    content-align: center middle;
+    color: $foreground 65%;
+    margin-top: 1;
+    border-top: solid $panel;
+    padding-top: 1;
+}
+
+#login-wait-readme-link {
+    width: 100%;
+    content-align: center middle;
+    color: $primary;
+    margin-top: 1;
+}
+
 /* --- EventListScreen --- */
 
 #events-panel {

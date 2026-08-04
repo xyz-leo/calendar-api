@@ -35,7 +35,17 @@ class CalendarTUI(App):
         if not config.timezone(cfg):
             return TimezoneScreen(self._advance, cancellable=False)
         if not config.token(cfg):
-            return LoginWaitScreen(config.api_server(cfg), self._advance)
+            # Nothing real sits underneath this on the stack yet (first boot) — Escape can't
+            # just pop back to "whatever was there before" the way the re-login/post-logout
+            # call sites in screens.py do. Land on an empty EventListScreen instead: it'll 401
+            # on its own refresh (no token yet), same "empty" outcome as the login attempt
+            # never having happened. Nothing about config.json changes on cancel, so the very
+            # next launch lands back on this same LoginWaitScreen, same as today.
+            return LoginWaitScreen(
+                config.api_server(cfg),
+                self._advance,
+                on_cancel=lambda: self.switch_screen(EventListScreen()),
+            )
         return EventListScreen()
 
     def _advance(self) -> None:

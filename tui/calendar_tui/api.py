@@ -8,6 +8,12 @@ class ApiError(Exception):
 def _request(
     method: str, api_server: str, token: str, path: str, expected_status: int, **kwargs
 ) -> httpx.Response:
+    if not token:
+        # A missing/empty token would otherwise reach httpx as a literal "Bearer " header —
+        # h11 rejects that outright (trailing whitespace is an illegal header value), surfacing
+        # as a confusing "Could not reach <server>: Illegal header value..." rather than the
+        # actual, simple problem: there's no session to make this request with yet.
+        raise ApiError("You need to log in to use the API.")
     try:
         response = httpx.request(
             method,
