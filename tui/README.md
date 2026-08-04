@@ -145,12 +145,16 @@ same as "Pick month..." above.
 
 Press **`o`** from the event list to open a menu grouping everything above that isn't an
 everyday action: **Timezone**, **Themes**, **Toggle clock on/off**, **Toggle layout
-(agenda/table)**, **Login**, **Logout**, and **Exit**. Picking one of the first four runs the
-same thing its old dedicated key used to, then either opens the relevant picker or applies the
-toggle immediately and closes the menu; **Exit** quits the app outright. Timezone and Themes are
-both cancelable with **`Esc`** — backs out without changing anything, same either way — except
-during the very first run, before a timezone is set at all, where there's nothing yet to cancel
-back to and the key is disabled.
+(agenda/table)**, **Toggle footer labels**, **Login**, **Logout**, and **Exit**. Picking one of
+the first five runs the same thing its old dedicated key used to, then either opens the relevant
+picker or applies the toggle immediately and closes the menu; **Exit** quits the app outright.
+Timezone and Themes are both cancelable with **`Esc`** — backs out without changing anything, same
+either way — except during the very first run, before a timezone is set at all, where there's
+nothing yet to cancel back to and the key is disabled.
+
+**Toggle footer labels** drops every footer entry's description, leaving just the key itself (e.g.
+"r  c  n  o" instead of "r Refresh  c Calendar  n New event  o Options") — a noticeably shorter
+footer once you already know the shortcuts.
 
 **Login** re-opens the same Google login screen used on first boot, for when the session JWT (or
 the Google refresh token behind it — see below) has expired or gone invalid and you're seeing

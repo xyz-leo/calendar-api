@@ -12,6 +12,7 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Center, Middle, Vertical, VerticalScroll
 from textual.geometry import Region
+from textual.reactive import reactive
 from textual.screen import Screen
 from textual.widgets import DataTable, Footer, Input, Label, OptionList, Static
 from textual.widgets.option_list import Option
@@ -19,6 +20,42 @@ from textual.widgets.option_list import Option
 from . import api, config, oauth_login
 from .clock import Clock
 from .timezones import COMMON_TIMEZONES, DEFAULT_TIMEZONE
+
+
+class CompactFooter(Footer):
+    """Footer that can drop every binding's description, showing just the key — toggled via
+    Options -> "Toggle footer labels" (mirrors the web client's same option). Duck-types rather
+    than importing Textual's private FooterKey class: every real key entry Footer.compose()
+    yields has a `.description` attribute (a plain, mutable instance attribute — re-read on each
+    render), which a FooterLabel (used for grouped bindings) does not.
+    """
+
+    hide_labels: reactive[bool] = reactive(False)
+
+    def __init__(self, *args, hide_labels: bool = False, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        # set_reactive (not a plain assignment) is what Footer's own __init__ uses for its
+        # "compact" param too — sets the starting value without firing watch_hide_labels, so the
+        # very first compose() already renders correctly instead of compose-then-recompose.
+        self.set_reactive(CompactFooter.hide_labels, hide_labels)
+
+    def compose(self) -> ComposeResult:
+        for widget in super().compose():
+            if self.hide_labels and hasattr(widget, "description"):
+                # Not "" — FooterKey.render() only pads the key when description is truthy; an
+                # empty string takes a bare-key fallback with *no* padding at all, so adjacent
+                # keys render flush against each other ("rcnoafesc..."). A single space keeps
+                # that padded code path (rendering nothing visible) while still separating keys.
+                widget.description = " "
+            yield widget
+
+    def watch_hide_labels(self, hide_labels: bool) -> None:
+        self.refresh(recompose=True)
+
+
+def _footer() -> CompactFooter:
+    return CompactFooter(hide_labels=config.hide_footer_labels(config.load()))
+
 
 _OFFSET_RE = re.compile(r"[+-]\d{2}:\d{2}$")
 
@@ -92,7 +129,7 @@ class SetupScreen(Screen):
                     yield Label("calendar-tui", id="setup-banner")
                     yield Label(self.prompt, id="setup-prompt")
                     yield Input(placeholder=self.placeholder, id="setup-input")
-        yield Footer()
+        yield _footer()
 
     def on_mount(self) -> None:
         self.query_one(Input).focus()
@@ -161,7 +198,7 @@ class LoginWaitScreen(Screen):
                         ),
                         id="login-wait-readme-link",
                     )
-        yield Footer()
+        yield _footer()
 
     def on_mount(self) -> None:
         self._wait_for_token()
@@ -232,7 +269,7 @@ class TimezoneScreen(Screen):
                 with Vertical(id="timezone-box"):
                     yield Label("Pick your standard timezone", id="timezone-title")
                     yield OptionList(id="timezone-list")
-        yield Footer()
+        yield _footer()
 
     def on_mount(self) -> None:
         option_list = self.query_one(OptionList)
@@ -318,7 +355,7 @@ class EventListScreen(Screen):
             # siblings (Clock/title) pinning that bounding box to full width.
             with Center(id="agenda-center"):
                 yield OptionList(id="events-agenda")
-        yield Footer()
+        yield _footer()
 
     def on_mount(self) -> None:
         self.query_one(Clock).display = config.show_clock(config.load())
@@ -341,6 +378,15 @@ class EventListScreen(Screen):
         cfg["layout"] = new_layout
         config.save(cfg)
         self._apply_layout(new_layout)
+
+    def action_toggle_footer_labels(self) -> None:
+        cfg = config.load()
+        hidden = not config.hide_footer_labels(cfg)
+        cfg["hide_footer_labels"] = hidden
+        config.save(cfg)
+        # Updates this screen's own footer immediately; every other screen's footer just reads
+        # the new config value fresh the next time it mounts (_footer() above).
+        self.query_one(CompactFooter).hide_labels = hidden
 
     def _apply_layout(self, layout: str) -> None:
         table = self.query_one(DataTable)
@@ -534,6 +580,7 @@ class EventListScreen(Screen):
                 on_themes=self.action_themes,
                 on_toggle_clock=self.action_toggle_clock,
                 on_toggle_layout=self.action_toggle_layout,
+                on_toggle_footer_labels=self.action_toggle_footer_labels,
                 on_login=self.action_login,
                 on_logout=self.action_logout,
             )
@@ -612,6 +659,7 @@ class OptionsScreen(Screen):
         on_themes: Callable[[], None],
         on_toggle_clock: Callable[[], None],
         on_toggle_layout: Callable[[], None],
+        on_toggle_footer_labels: Callable[[], None],
         on_login: Callable[[], None],
         on_logout: Callable[[], None],
     ) -> None:
@@ -620,6 +668,7 @@ class OptionsScreen(Screen):
         self.on_themes = on_themes
         self.on_toggle_clock = on_toggle_clock
         self.on_toggle_layout = on_toggle_layout
+        self.on_toggle_footer_labels = on_toggle_footer_labels
         self.on_login = on_login
         self.on_logout = on_logout
 
@@ -629,7 +678,7 @@ class OptionsScreen(Screen):
                 with Vertical(id="options-box"):
                     yield Label("Options", id="options-title")
                     yield OptionList(id="options-list")
-        yield Footer()
+        yield _footer()
 
     def on_mount(self) -> None:
         option_list = self.query_one(OptionList)
@@ -639,6 +688,7 @@ class OptionsScreen(Screen):
                 Option("Themes", id="themes"),
                 Option("Toggle clock on/off", id="clock"),
                 Option("Toggle layout (agenda/table)", id="layout"),
+                Option("Toggle footer labels", id="footer_labels"),
                 Option("Login", id="login"),
                 Option("Logout", id="logout"),
                 Option("Exit", id="exit"),
@@ -662,6 +712,8 @@ class OptionsScreen(Screen):
             self.on_toggle_clock()
         elif option_id == "layout":
             self.on_toggle_layout()
+        elif option_id == "footer_labels":
+            self.on_toggle_footer_labels()
         elif option_id == "login":
             self.on_login()
         elif option_id == "logout":
@@ -696,7 +748,7 @@ class AboutScreen(Screen):
                     yield Label("About", id="about-title")
                     yield Label(_ABOUT_TEXT, id="about-text")
                     yield Label(link_text, id="about-link")
-        yield Footer()
+        yield _footer()
 
     def action_cancel(self) -> None:
         self.app.pop_screen()
@@ -752,7 +804,7 @@ class EventDetailScreen(Screen):
                     f"{label}: {_detail_value(self.event, field)}",
                     classes="detail-field",
                 )
-        yield Footer()
+        yield _footer()
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
         # Holiday events are merged in from Google's public holiday calendar
@@ -811,7 +863,7 @@ class ConfirmScreen(Screen):
                 with Vertical(id="confirm-box"):
                     yield Label(self.message, id="confirm-message")
                     yield Input(placeholder="yes", id="confirm-input")
-        yield Footer()
+        yield _footer()
 
     def on_mount(self) -> None:
         self.query_one(Input).focus()
@@ -855,7 +907,7 @@ class EventFormScreen(Screen):
             for label, field, default in _FORM_FIELDS:
                 yield Label(label, classes="form-label")
                 yield Input(value=self._prefill(field, default), id=f"form-{field}")
-        yield Footer()
+        yield _footer()
 
     def _prefill(self, field: str, default: str) -> str:
         if self.event is None:
@@ -957,7 +1009,7 @@ class ThemesScreen(Screen):
                 with Vertical(id="themes-box"):
                     yield Label("Pick a theme", id="themes-title")
                     yield OptionList(id="themes-list")
-        yield Footer()
+        yield _footer()
 
     def on_mount(self) -> None:
         self._original_theme = self.app.theme
@@ -1008,7 +1060,7 @@ class _FilterPromptScreen(Screen):
                 with Vertical(id="filter-prompt-box"):
                     yield Label(self.prompt, id="filter-prompt-label")
                     yield Input(placeholder=self.placeholder, id="filter-prompt-input")
-        yield Footer()
+        yield _footer()
 
     def on_mount(self) -> None:
         self.query_one(Input).focus()
@@ -1048,7 +1100,7 @@ class FilterScreen(Screen):
                 with Vertical(id="filter-box"):
                     yield Label("Filter by date", id="filter-title")
                     yield OptionList(id="filter-list")
-        yield Footer()
+        yield _footer()
 
     def on_mount(self) -> None:
         option_list = self.query_one(OptionList)
@@ -1167,7 +1219,7 @@ class CalendarScreen(Screen):
             with Middle():
                 with Vertical(id="calendar-box"):
                     yield Static(id="calendar-grid")
-        yield Footer()
+        yield _footer()
 
     def on_mount(self) -> None:
         self._refresh_events()

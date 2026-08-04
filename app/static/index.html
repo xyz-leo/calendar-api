@@ -95,7 +95,7 @@
   .login-readme-link:hover { color: var(--accent); }
 
   /* --- Agenda --- */
-  #agenda-screen { padding: clamp(0.5rem, 3vw, 1.5rem); padding-bottom: calc(76px + env(safe-area-inset-bottom)); }
+  #agenda-screen { padding: clamp(0.5rem, 3vw, 1.5rem); padding-bottom: var(--footer-height, 76px); }
   .panel { max-width: 900px; margin: 0 auto; width: 100%; display: flex; flex-direction: column; flex: 1; min-height: 0; }
   #clock-wrap { text-align: center; padding-top: clamp(0.25rem, 3vw, 1rem); }
   .clock-time {
@@ -125,16 +125,27 @@
   /* --- Footer nav --- */
   .footer-nav {
     position: fixed; bottom: 0; left: 0; right: 0;
-    display: flex; flex-wrap: wrap; justify-content: center; gap: 0.4rem;
+    display: flex; flex-direction: column; align-items: center;
     background: var(--panel); border-top: 1px solid var(--primary);
-    padding: 0.5rem calc(0.5rem + env(safe-area-inset-left)) calc(0.5rem + env(safe-area-inset-bottom));
+    padding: 0 calc(0.5rem + env(safe-area-inset-left)) calc(0.3rem + env(safe-area-inset-bottom));
     z-index: 20;
   }
+  .footer-nav .footer-toggle {
+    background: transparent; border: none; color: var(--primary); cursor: pointer;
+    font-family: inherit; font-size: 0.75rem; line-height: 1; min-height: auto;
+    padding: 0.15rem 1rem; width: 100%; display: flex; justify-content: center;
+  }
+  .footer-nav .footer-toggle:hover, .footer-nav .footer-toggle:focus-visible { color: var(--accent); }
+  .footer-nav-buttons {
+    display: flex; flex-wrap: wrap; justify-content: center; gap: 0.3rem; width: 100%;
+  }
+  .footer-nav.collapsed .footer-nav-buttons { display: none; }
+  body.compact-footer .footer-nav .btn-label { display: none; }
   .footer-nav button, .nav-btn {
-    display: flex; align-items: center; gap: 0.4rem;
+    display: flex; align-items: center; gap: 0.35rem;
     background: transparent; border: 1px solid transparent; color: var(--fg);
-    padding: 0.5rem 0.75rem; border-radius: var(--radius); font-family: inherit;
-    font-size: clamp(0.75rem, 2vw, 0.9rem); cursor: pointer; min-height: 40px;
+    padding: 0.3rem 0.6rem; border-radius: var(--radius); font-family: inherit;
+    font-size: clamp(0.75rem, 2vw, 0.9rem); cursor: pointer; min-height: 32px;
   }
   .footer-nav button:hover, .footer-nav button:focus-visible,
   .nav-btn:hover, .nav-btn:focus-visible {
@@ -194,11 +205,20 @@
   .detail-actions { display: flex; justify-content: center; gap: 0.6rem; margin-top: 1.25rem; }
 
   /* --- Calendar --- */
-  #calendar-screen { padding: 1rem; padding-bottom: calc(76px + env(safe-area-inset-bottom)); }
+  #calendar-screen { padding: 1rem; padding-bottom: var(--footer-height, 76px); }
   .calendar-box { width: 100%; max-width: 360px; }
+  .calendar-header-row { display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.5rem; }
+  .calendar-nav-btn {
+    flex: none; width: 2.25rem; height: 2.25rem; display: flex; align-items: center; justify-content: center;
+    background: transparent; border: 1px solid var(--primary); border-radius: var(--radius);
+    color: var(--fg); font-size: 1.1rem; line-height: 1; cursor: pointer; font-family: inherit;
+  }
+  .calendar-nav-btn:hover, .calendar-nav-btn:focus-visible {
+    border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--primary) 12%, transparent);
+  }
   .calendar-month {
-    text-align: center; font-weight: 700; color: var(--accent); font-size: clamp(1rem, 3.2vw, 1.25rem);
-    padding: 0.4rem; border-radius: var(--radius); cursor: pointer; margin-bottom: 0.5rem;
+    flex: 1; text-align: center; font-weight: 700; color: var(--accent); font-size: clamp(1rem, 3.2vw, 1.25rem);
+    padding: 0.4rem; border-radius: var(--radius); cursor: pointer;
   }
   .calendar-month.header-cursor { background: var(--accent); color: var(--bg); }
   .calendar-weekdays {
@@ -257,25 +277,35 @@
       <div class="agenda-list" id="agenda-list"></div>
     </div>
     <nav class="footer-nav">
-      <button type="button" id="btn-refresh"><kbd>r</kbd> Refresh</button>
-      <button type="button" id="btn-calendar"><kbd>c</kbd> Calendar</button>
-      <button type="button" id="btn-new-event"><kbd>n</kbd> New event</button>
-      <button type="button" id="btn-options"><kbd>o</kbd> Options</button>
-      <button type="button" id="btn-about"><kbd>a</kbd> About</button>
-      <button type="button" id="btn-filter"><kbd>f</kbd> Filter</button>
-      <button type="button" id="clear-filter-btn" class="hidden"><kbd>esc</kbd> Clear filter</button>
+      <button type="button" class="footer-toggle" data-footer-toggle aria-label="Hide footer">▾</button>
+      <div class="footer-nav-buttons">
+        <button type="button" id="btn-refresh"><kbd>r</kbd><span class="btn-label">Refresh</span></button>
+        <button type="button" id="btn-calendar"><kbd>c</kbd><span class="btn-label">Calendar</span></button>
+        <button type="button" id="btn-new-event"><kbd>n</kbd><span class="btn-label">New event</span></button>
+        <button type="button" id="btn-options"><kbd>o</kbd><span class="btn-label">Options</span></button>
+        <button type="button" id="btn-about"><kbd>a</kbd><span class="btn-label">About</span></button>
+        <button type="button" id="btn-filter"><kbd>f</kbd><span class="btn-label">Filter</span></button>
+        <button type="button" id="clear-filter-btn" class="hidden"><kbd>esc</kbd><span class="btn-label">Clear filter</span></button>
+      </div>
     </nav>
   </div>
 
   <div id="calendar-screen" class="screen centered hidden">
     <div class="box calendar-box">
-      <div class="calendar-month" id="calendar-month"></div>
+      <div class="calendar-header-row">
+        <button type="button" class="calendar-nav-btn" id="calendar-prev-btn" aria-label="Previous month">‹</button>
+        <div class="calendar-month" id="calendar-month"></div>
+        <button type="button" class="calendar-nav-btn" id="calendar-next-btn" aria-label="Next month">›</button>
+      </div>
       <div class="calendar-weekdays" id="calendar-weekdays"></div>
       <div class="calendar-grid" id="calendar-grid"></div>
     </div>
     <nav class="footer-nav">
-      <button type="button" id="cal-back-btn"><kbd>esc</kbd> Back</button>
-      <button type="button" id="cal-jump-btn"><kbd>enter</kbd> Jump to day</button>
+      <button type="button" class="footer-toggle" data-footer-toggle aria-label="Hide footer">▾</button>
+      <div class="footer-nav-buttons">
+        <button type="button" id="cal-back-btn"><kbd>esc</kbd><span class="btn-label">Back</span></button>
+        <button type="button" id="cal-jump-btn"><kbd>enter</kbd><span class="btn-label">Jump to day</span></button>
+      </div>
     </nav>
   </div>
 
@@ -286,6 +316,7 @@
         <li class="option-item active" data-action="timezone" tabindex="0">Timezone</li>
         <li class="option-item" data-action="theme" tabindex="0">Theme</li>
         <li class="option-item" data-action="clock" tabindex="0">Toggle clock on/off</li>
+        <li class="option-item" data-action="footer-labels" tabindex="0">Toggle footer labels</li>
         <li class="option-item" data-action="login" tabindex="0">Login</li>
         <li class="option-item" data-action="logout" tabindex="0">Logout</li>
       </ul>
@@ -645,6 +676,7 @@
     theme: loadPref("calendar-theme", "calendar-tui"),
     timezone: loadPref("calendar-timezone", Intl.DateTimeFormat().resolvedOptions().timeZone),
     showClock: loadPref("calendar-show-clock", "true") !== "false",
+    compactFooter: loadPref("calendar-compact-footer", "false") === "true",
     calendar: null,
     detailEvent: null,
     editingEvent: null,
@@ -1041,6 +1073,7 @@
     if (action === "timezone") openTimezoneOverlay();
     else if (action === "theme") openThemeOverlay();
     else if (action === "clock") toggleClock();
+    else if (action === "footer-labels") toggleCompactFooter();
     else if (action === "login") window.location.href = "/auth/login";
     else if (action === "logout") confirmLogout();
   });
@@ -1049,6 +1082,12 @@
     state.showClock = !state.showClock;
     savePref("calendar-show-clock", state.showClock);
     document.getElementById("clock-wrap").classList.toggle("hidden", !state.showClock);
+  }
+
+  function toggleCompactFooter() {
+    state.compactFooter = !state.compactFooter;
+    savePref("calendar-compact-footer", state.compactFooter);
+    document.body.classList.toggle("compact-footer", state.compactFooter);
   }
 
   function openAboutOverlay() {
@@ -1310,6 +1349,32 @@
   document.getElementById("clear-filter-btn").addEventListener("click", clearFilter);
   document.getElementById("cal-back-btn").addEventListener("click", closeCalendarScreen);
   document.getElementById("cal-jump-btn").addEventListener("click", calendarSelect);
+  document.getElementById("calendar-prev-btn").addEventListener("click", () => calendarChangeMonth(-1));
+  document.getElementById("calendar-next-btn").addEventListener("click", () => calendarChangeMonth(1));
+
+  // ---- Footer collapse (mobile: no keyboard to change screens with, so the footer can eat a
+  // real chunk of a small viewport — this lets it be tucked away) + the height-tracking that
+  // fixes it overlapping the last agenda rows in the first place. --footer-height reflects the
+  // footer's *actual* rendered height (it wraps to more than one row on narrow phones, and
+  // shrinks when collapsed) — #agenda-screen/#calendar-screen reserve exactly that much padding
+  // instead of a guessed fixed number that stops matching reality the moment it wraps.
+  const footerHeightObserver = new ResizeObserver((entries) => {
+    for (const entry of entries) {
+      if (entry.target.offsetHeight > 0) {
+        document.documentElement.style.setProperty("--footer-height", `${entry.target.offsetHeight}px`);
+      }
+    }
+  });
+  document.querySelectorAll(".footer-nav").forEach((nav) => footerHeightObserver.observe(nav));
+
+  document.querySelectorAll("[data-footer-toggle]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const nav = btn.closest(".footer-nav");
+      const collapsed = nav.classList.toggle("collapsed");
+      btn.textContent = collapsed ? "▴" : "▾";
+      btn.setAttribute("aria-label", collapsed ? "Show footer" : "Hide footer");
+    });
+  });
 
   // ---- Keyboard (mirrors tui/calendar_tui/screens.py's BINDINGS) ----
 
@@ -1386,6 +1451,7 @@
 
   async function bootstrap() {
     document.getElementById("clock-wrap").classList.toggle("hidden", !state.showClock);
+    document.body.classList.toggle("compact-footer", state.compactFooter);
     startClock();
     try {
       const events = await fetchEvents(null);

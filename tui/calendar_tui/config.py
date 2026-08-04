@@ -43,3 +43,7 @@ def show_year(config: dict) -> bool:
 
 def layout(config: dict) -> str:
     return config.get("layout", "agenda")
+
+
+def hide_footer_labels(config: dict) -> bool:
+    return config.get("hide_footer_labels", False)
