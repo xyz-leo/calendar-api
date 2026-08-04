@@ -6,6 +6,7 @@ from datetime import date, datetime, time
 from typing import Callable
 from zoneinfo import ZoneInfo
 
+from rich.text import Text
 from textual import work
 from textual.app import ComposeResult
 from textual.binding import Binding
@@ -252,6 +253,7 @@ class EventListScreen(Screen):
         ("c", "calendar", "Calendar"),
         ("n", "create", "New event"),
         ("o", "options", "Options"),
+        ("a", "about", "About"),
         ("f", "filter", "Filter"),
         ("escape", "clear_filter", "Clear filter"),
     ]
@@ -504,6 +506,9 @@ class EventListScreen(Screen):
     def action_themes(self) -> None:
         self.app.push_screen(ThemesScreen())
 
+    def action_about(self) -> None:
+        self.app.push_screen(AboutScreen())
+
     def action_change_timezone(self) -> None:
         self.app.push_screen(TimezoneScreen(self.app.pop_screen))
 
@@ -628,6 +633,41 @@ class OptionsScreen(Screen):
 
     def action_cancel(self) -> None:
         self.app.pop_screen()
+
+
+_ABOUT_TEXT = (
+    "Personal project by xyz-leo — Google Calendar, at the terminal. Simple, fast, "
+    "distraction-free, since that's where most programmers already spend their day. The web "
+    "version brings the same look to any browser, mobile included, without Google's UI in the way."
+)
+_ABOUT_URL = "https://github.com/xyz-leo/calendar-api"
+
+
+class AboutScreen(Screen):
+    """Short project blurb + a clickable link to the repo. Enter opens the link in the
+    system browser (clicking it directly also works, same as any other terminal
+    hyperlink); Escape goes back."""
+
+    BINDINGS = [("escape", "cancel", "Cancel"), ("enter", "open_link", "Open link in browser")]
+
+    def compose(self) -> ComposeResult:
+        # Built as a Text object with an explicit link style, not markup ("[link=...]...[/link]")
+        # — Textual's markup parser (distinct from Rich's own, which handles this fine) chokes on
+        # a "//" right after the "=" in a link target and raises MarkupError.
+        link_text = Text(_ABOUT_URL, style=f"link {_ABOUT_URL} underline")
+        with Center():
+            with Middle():
+                with Vertical(id="about-box"):
+                    yield Label("About", id="about-title")
+                    yield Label(_ABOUT_TEXT, id="about-text")
+                    yield Label(link_text, id="about-link")
+        yield Footer()
+
+    def action_cancel(self) -> None:
+        self.app.pop_screen()
+
+    def action_open_link(self) -> None:
+        webbrowser.open(_ABOUT_URL)
 
 
 _DETAIL_FIELDS = [

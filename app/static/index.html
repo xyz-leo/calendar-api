@@ -8,8 +8,9 @@
 <style>
   :root {
     color-scheme: dark;
+    --radius: 2px;
     --bg: #0d0d0d; --surface: #131313; --panel: #1c1717;
-    --primary: #cc6677; --secondary: #a8505c; --accent: #d4af37;
+    --primary: #a62639; --secondary: #7a1c2b; --accent: #d4af37;
     --fg: #ececec; --header: #39ff14; --error: #e0616e;
     --holiday: #ff6a00;
   }
@@ -42,7 +43,7 @@
   * { box-sizing: border-box; }
   html, body { height: 100%; margin: 0; }
   body {
-    font-family: ui-monospace, "SF Mono", "Cascadia Code", "Fira Code", Menlo, Consolas, "Liberation Mono", monospace;
+    font-family: Consolas, "DejaVu Sans Mono", "Liberation Mono", Menlo, "Courier New", ui-monospace, monospace;
     background: var(--bg);
     color: var(--fg);
     min-height: 100dvh;
@@ -53,7 +54,7 @@
   * { scrollbar-width: thin; scrollbar-color: var(--primary) var(--panel); }
   *::-webkit-scrollbar { width: 8px; height: 8px; }
   *::-webkit-scrollbar-track { background: var(--panel); }
-  *::-webkit-scrollbar-thumb { background: var(--primary); border-radius: 8px; }
+  *::-webkit-scrollbar-thumb { background: var(--primary); border-radius: var(--radius); }
   :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
   .hidden { display: none !important; }
@@ -63,14 +64,14 @@
   .box {
     background: var(--surface);
     border: 1px solid var(--primary);
-    border-radius: 14px;
+    border-radius: var(--radius);
     box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary) 25%, transparent), 0 12px 40px rgba(0, 0, 0, 0.45);
     padding: clamp(1rem, 4vw, 2rem);
   }
 
   .btn {
     display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;
-    padding: 0.75rem 1.5rem; border-radius: 10px; border: 1px solid var(--primary);
+    padding: 0.75rem 1.5rem; border-radius: var(--radius); border: 1px solid var(--primary);
     background: var(--primary); color: var(--bg); font-weight: 700; text-decoration: none;
     cursor: pointer; font-family: inherit; font-size: 1rem;
     transition: transform 0.1s ease, box-shadow 0.15s ease;
@@ -90,18 +91,17 @@
   #clock-wrap { text-align: center; padding-top: clamp(0.25rem, 3vw, 1rem); }
   .clock-time {
     font-size: clamp(2rem, 9vw, 3.75rem); font-weight: 700; color: var(--primary); letter-spacing: 0.05em;
-    text-shadow: 0 0 18px color-mix(in srgb, var(--primary) 55%, transparent);
   }
   .clock-date { color: var(--fg); opacity: 0.85; margin-top: 0.35rem; font-size: clamp(0.85rem, 2.2vw, 1.05rem); }
   .agenda-title { text-align: center; color: var(--accent); font-size: clamp(1rem, 3vw, 1.35rem); font-weight: 700; margin: 1rem 0; }
   .agenda-list {
     flex: 1; min-height: 0; overflow-y: auto;
-    background: var(--surface); border: 1px solid var(--primary); border-radius: 14px; padding: 0.5rem 0.25rem;
+    background: var(--surface); border: 1px solid var(--primary); border-radius: var(--radius); padding: 0.5rem 0.25rem;
   }
   .agenda-day-header { color: var(--header); font-weight: 700; padding: 0.5rem 1rem 0.25rem; font-size: clamp(0.85rem, 2.4vw, 1rem); }
   .agenda-spacer { height: 0.5rem; }
   .agenda-row {
-    display: flex; align-items: baseline; gap: 0.6rem; padding: 0.45rem 1rem; border-radius: 8px;
+    display: flex; align-items: baseline; gap: 0.6rem; padding: 0.45rem 1rem; border-radius: var(--radius);
     cursor: pointer; font-size: clamp(0.85rem, 2.3vw, 1rem);
   }
   .agenda-row:hover { background: color-mix(in srgb, var(--primary) 12%, transparent); }
@@ -124,15 +124,15 @@
   .footer-nav button {
     display: flex; align-items: center; gap: 0.4rem;
     background: transparent; border: 1px solid transparent; color: var(--fg);
-    padding: 0.5rem 0.75rem; border-radius: 8px; font-family: inherit;
+    padding: 0.5rem 0.75rem; border-radius: var(--radius); font-family: inherit;
     font-size: clamp(0.75rem, 2vw, 0.9rem); cursor: pointer; min-height: 40px;
   }
   .footer-nav button:hover, .footer-nav button:focus-visible {
     border-color: var(--primary); background: color-mix(in srgb, var(--primary) 12%, transparent);
   }
-  .footer-nav kbd {
+  kbd {
     background: var(--bg); color: var(--accent); border: 1px solid var(--accent);
-    border-radius: 4px; padding: 0.05rem 0.4rem; font-size: 0.8em; font-family: inherit;
+    border-radius: var(--radius); padding: 0.05rem 0.4rem; font-size: 0.8em; font-family: inherit;
   }
 
   /* --- Overlays (Options / Timezone / Theme / Filter / Detail) --- */
@@ -143,15 +143,24 @@
   .overlay .box { width: 100%; max-width: 420px; max-height: 80vh; overflow-y: auto; }
   .overlay h2 { margin: 0 0 1rem; text-align: center; color: var(--accent); font-size: clamp(1rem, 3vw, 1.25rem); }
   .option-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.15rem; }
-  .option-item { padding: 0.6rem 0.9rem; border-radius: 8px; cursor: pointer; font-size: clamp(0.85rem, 2.2vw, 1rem); }
+  .option-item { padding: 0.6rem 0.9rem; border-radius: var(--radius); cursor: pointer; font-size: clamp(0.85rem, 2.2vw, 1rem); }
   .option-item:hover { background: color-mix(in srgb, var(--primary) 12%, transparent); }
   .option-item.active { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); font-weight: 700; }
+
+  .about-box { max-width: 420px; text-align: center; }
+  .about-text { margin: 0 0 1rem; line-height: 1.5; font-size: clamp(0.85rem, 2.2vw, 0.95rem); opacity: 0.9; }
+  .about-link { color: var(--primary); font-weight: 700; word-break: break-word; }
+  .about-link:hover { color: var(--accent); }
+  .about-hint {
+    margin: 1rem 0 0; opacity: 0.7; font-size: clamp(0.75rem, 2vw, 0.85rem);
+    display: flex; align-items: center; justify-content: center; gap: 0.4rem;
+  }
 
   .filter-pick-row { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; padding: 0.6rem 0.9rem; }
   .filter-pick-row label { opacity: 0.85; font-size: clamp(0.8rem, 2vw, 0.95rem); }
   .filter-pick-row input {
     font-family: inherit; background: var(--bg); color: var(--fg); border: 1px solid var(--primary);
-    border-radius: 8px; padding: 0.35rem 0.5rem;
+    border-radius: var(--radius); padding: 0.35rem 0.5rem;
   }
   #filter-clear-btn { display: block; width: 100%; margin-top: 0.5rem; }
 
@@ -160,7 +169,7 @@
   .calendar-box { width: 100%; max-width: 360px; }
   .calendar-month {
     text-align: center; font-weight: 700; color: var(--accent); font-size: clamp(1rem, 3.2vw, 1.25rem);
-    padding: 0.4rem; border-radius: 8px; cursor: pointer; margin-bottom: 0.5rem;
+    padding: 0.4rem; border-radius: var(--radius); cursor: pointer; margin-bottom: 0.5rem;
   }
   .calendar-month.header-cursor { background: var(--accent); color: var(--bg); }
   .calendar-weekdays {
@@ -170,7 +179,7 @@
   .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 0.2rem; }
   .calendar-cell {
     aspect-ratio: 1; display: flex; align-items: center; justify-content: center;
-    border-radius: 8px; font-size: clamp(0.8rem, 2.4vw, 1rem); cursor: pointer;
+    border-radius: var(--radius); font-size: clamp(0.8rem, 2.4vw, 1rem); cursor: pointer;
   }
   .calendar-cell.empty { cursor: default; }
   .calendar-cell:not(.empty):hover { background: color-mix(in srgb, var(--primary) 15%, transparent); }
@@ -189,7 +198,7 @@
   /* --- Toast --- */
   .toast {
     position: fixed; top: 1rem; left: 50%; transform: translateX(-50%);
-    background: var(--error); color: #1a1a1a; padding: 0.6rem 1rem; border-radius: 8px;
+    background: var(--error); color: #1a1a1a; padding: 0.6rem 1rem; border-radius: var(--radius);
     font-size: 0.9rem; z-index: 50; max-width: 90vw; text-align: center; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
   }
 </style>
@@ -217,6 +226,7 @@
       <button type="button" id="btn-refresh"><kbd>r</kbd> Refresh</button>
       <button type="button" id="btn-calendar"><kbd>c</kbd> Calendar</button>
       <button type="button" id="btn-options"><kbd>o</kbd> Options</button>
+      <button type="button" id="btn-about"><kbd>a</kbd> About</button>
       <button type="button" id="btn-filter"><kbd>f</kbd> Filter</button>
       <button type="button" id="clear-filter-btn" class="hidden"><kbd>esc</kbd> Clear filter</button>
     </nav>
@@ -258,6 +268,18 @@
     <div class="box">
       <h2>Pick a theme</h2>
       <ul class="option-list" id="theme-list"></ul>
+    </div>
+  </div>
+
+  <div id="about-overlay" class="overlay hidden">
+    <div class="box about-box">
+      <h2>About</h2>
+      <p class="about-text">Personal project by xyz-leo — Google Calendar, at the terminal. Simple,
+        fast, distraction-free, since that's where most programmers already spend their day. The
+        web version brings the same look to any browser, mobile included, without Google's UI in
+        the way.</p>
+      <a class="about-link" id="about-link" href="https://github.com/xyz-leo/calendar-api" target="_blank" rel="noopener noreferrer">github.com/xyz-leo/calendar-api</a>
+      <p class="about-hint"><kbd>enter</kbd> Open link in browser</p>
     </div>
   </div>
 
@@ -697,6 +719,10 @@
     document.getElementById("clock-wrap").classList.toggle("hidden", !state.showClock);
   }
 
+  function openAboutOverlay() {
+    openOverlay("about-overlay");
+  }
+
   async function performLogout() {
     // The cookie is what actually matters — if this request fails (e.g. the
     // server is briefly unreachable), showing the login screen anyway is still
@@ -936,6 +962,7 @@
   document.getElementById("btn-refresh").addEventListener("click", actionRefresh);
   document.getElementById("btn-calendar").addEventListener("click", openCalendarScreen);
   document.getElementById("btn-options").addEventListener("click", openOptionsOverlay);
+  document.getElementById("btn-about").addEventListener("click", openAboutOverlay);
   document.getElementById("btn-filter").addEventListener("click", openFilterOverlay);
   document.getElementById("clear-filter-btn").addEventListener("click", clearFilter);
   document.getElementById("cal-back-btn").addEventListener("click", closeCalendarScreen);
@@ -961,7 +988,8 @@
         if (currentOverlay === "theme-overlay" && active) document.documentElement.dataset.theme = active.dataset.value;
       } else if (e.key === "Enter") {
         e.preventDefault();
-        activateHighlighted(container);
+        if (currentOverlay === "about-overlay") document.getElementById("about-link").click();
+        else activateHighlighted(container);
       }
       return;
     }
@@ -973,6 +1001,7 @@
       if (e.key === "r") actionRefresh();
       else if (e.key === "c") openCalendarScreen();
       else if (e.key === "o") openOptionsOverlay();
+      else if (e.key === "a") openAboutOverlay();
       else if (e.key === "f") openFilterOverlay();
       else if (e.key === "Escape") { if (state.filterLabel) clearFilter(); }
       else if (e.key === "ArrowDown") { e.preventDefault(); moveAgendaSelection(1); }

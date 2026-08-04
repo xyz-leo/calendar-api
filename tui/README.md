@@ -164,6 +164,13 @@ itself keeps a refresh token alive while this app's OAuth consent screen is stil
 status (see the root README). If you hit a `401` before then, either something logged you out
 server-side or the underlying Google grant was revoked; **Login** above is the fix either way.
 
+### About
+
+Press **`a`** from the event list for a short project blurb and a link to the repo
+([xyz-leo/calendar-api](https://github.com/xyz-leo/calendar-api)). `Enter` opens it in your
+system browser (clicking it directly also works, same as any terminal hyperlink); `Escape` goes
+back.
+
 ### Creating, editing, and deleting events
 
 - **`n`** from the event list opens a blank form (Summary, Description, Location, Start, End,
