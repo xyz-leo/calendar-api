@@ -48,8 +48,8 @@ That's the entire setup — no Docker, no Google Cloud project, none of the step
 Even less setup than the TUI: the API serves its own web client at `/` — visit the API's URL
 (e.g. `https://calendar-api.learningsea.xyz`) in any modern browser, log in with Google, done. It's
 a single self-contained page (`app/static/index.html`, no build step, no separate deployment) —
-same-origin only by design (see `docs/architecture.md`'s Google OAuth section), read-only for now
-(viewing/filtering events; create/update/delete are still TUI/`calctl.sh`-only).
+same-origin only by design (see `docs/architecture.md`'s Google OAuth section). Full event CRUD,
+same as the TUI: viewing, filtering, creating, editing, and deleting.
 
 ---
 

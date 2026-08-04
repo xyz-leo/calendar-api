@@ -121,13 +121,14 @@
     padding: 0.5rem calc(0.5rem + env(safe-area-inset-left)) calc(0.5rem + env(safe-area-inset-bottom));
     z-index: 20;
   }
-  .footer-nav button {
+  .footer-nav button, .nav-btn {
     display: flex; align-items: center; gap: 0.4rem;
     background: transparent; border: 1px solid transparent; color: var(--fg);
     padding: 0.5rem 0.75rem; border-radius: var(--radius); font-family: inherit;
     font-size: clamp(0.75rem, 2vw, 0.9rem); cursor: pointer; min-height: 40px;
   }
-  .footer-nav button:hover, .footer-nav button:focus-visible {
+  .footer-nav button:hover, .footer-nav button:focus-visible,
+  .nav-btn:hover, .nav-btn:focus-visible {
     border-color: var(--primary); background: color-mix(in srgb, var(--primary) 12%, transparent);
   }
   kbd {
@@ -163,6 +164,25 @@
     border-radius: var(--radius); padding: 0.35rem 0.5rem;
   }
   #filter-clear-btn { display: block; width: 100%; margin-top: 0.5rem; }
+
+  /* --- Event form / review / confirm --- */
+  .form-box, .review-box, .confirm-box { max-width: 480px; }
+  .form-label { display: block; margin: 0.75rem 0 0.3rem; opacity: 0.85; font-size: clamp(0.8rem, 2vw, 0.9rem); }
+  #event-form input[type="text"], #event-form input[type="date"], #event-form input[type="datetime-local"],
+  #event-form textarea {
+    width: 100%; font-family: inherit; font-size: clamp(0.85rem, 2.2vw, 0.95rem);
+    background: var(--bg); color: var(--fg); border: 1px solid var(--primary);
+    border-radius: var(--radius); padding: 0.45rem 0.6rem; color-scheme: dark; resize: vertical;
+  }
+  #event-form input:focus, #event-form textarea:focus { border-color: var(--accent); }
+  .form-checkbox-row { display: flex; align-items: center; gap: 0.5rem; margin-top: 1rem; cursor: pointer; }
+  .form-checkbox-row input { accent-color: var(--primary); width: 1.1rem; height: 1.1rem; }
+  .form-actions, .confirm-actions {
+    display: flex; justify-content: flex-end; gap: 0.6rem; margin-top: 1.5rem;
+  }
+  .review-box .detail-field, .confirm-box p { font-size: clamp(0.85rem, 2.2vw, 0.95rem); }
+  #confirm-message { line-height: 1.5; opacity: 0.9; }
+  .detail-actions { display: flex; justify-content: center; gap: 0.6rem; margin-top: 1.25rem; }
 
   /* --- Calendar --- */
   #calendar-screen { padding: 1rem; padding-bottom: calc(76px + env(safe-area-inset-bottom)); }
@@ -225,6 +245,7 @@
     <nav class="footer-nav">
       <button type="button" id="btn-refresh"><kbd>r</kbd> Refresh</button>
       <button type="button" id="btn-calendar"><kbd>c</kbd> Calendar</button>
+      <button type="button" id="btn-new-event"><kbd>n</kbd> New event</button>
       <button type="button" id="btn-options"><kbd>o</kbd> Options</button>
       <button type="button" id="btn-about"><kbd>a</kbd> About</button>
       <button type="button" id="btn-filter"><kbd>f</kbd> Filter</button>
@@ -308,6 +329,71 @@
     <div class="box detail-box" id="detail-box"></div>
   </div>
 
+  <div id="form-overlay" class="overlay hidden">
+    <div class="box form-box">
+      <h2 id="form-title">New Event</h2>
+      <form id="event-form">
+        <label class="form-label" for="form-summary">Summary</label>
+        <input type="text" id="form-summary" required>
+
+        <label class="form-label" for="form-description">Description</label>
+        <textarea id="form-description" rows="2"></textarea>
+
+        <label class="form-label" for="form-location">Location</label>
+        <input type="text" id="form-location">
+
+        <label class="form-checkbox-row" for="form-all-day">
+          <input type="checkbox" id="form-all-day">
+          <span>All day</span>
+        </label>
+
+        <div id="form-timed-fields">
+          <label class="form-label" for="form-start-datetime">Start</label>
+          <input type="datetime-local" id="form-start-datetime">
+          <label class="form-label" for="form-end-datetime">End</label>
+          <input type="datetime-local" id="form-end-datetime">
+        </div>
+
+        <div id="form-allday-fields" class="hidden">
+          <label class="form-label" for="form-start-date">Start date</label>
+          <input type="date" id="form-start-date">
+          <label class="form-label" for="form-end-date">End date (optional — defaults to the next day)</label>
+          <input type="date" id="form-end-date">
+        </div>
+
+        <label class="form-label" for="form-recurrence">Recurrence (RRULE, optional — e.g. FREQ=WEEKLY;COUNT=4)</label>
+        <input type="text" id="form-recurrence" placeholder="FREQ=WEEKLY;COUNT=4">
+
+        <div class="form-actions">
+          <button type="button" class="btn btn-ghost" id="form-cancel-btn">Cancel</button>
+          <button type="submit" class="btn" id="form-save-btn">Review</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="review-overlay" class="overlay hidden">
+    <div class="box review-box">
+      <h2 id="review-title">Review</h2>
+      <div id="review-body"></div>
+      <div class="confirm-actions">
+        <button type="button" class="btn btn-ghost" id="review-back-btn">Back</button>
+        <button type="button" class="btn" id="review-confirm-btn">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="confirm-overlay" class="overlay hidden">
+    <div class="box confirm-box">
+      <h2 id="confirm-title">Confirm</h2>
+      <p id="confirm-message"></p>
+      <div class="confirm-actions">
+        <button type="button" class="btn btn-ghost" id="confirm-cancel-btn">Cancel</button>
+        <button type="button" class="btn" id="confirm-ok-btn">Confirm</button>
+      </div>
+    </div>
+  </div>
+
   <div id="toast" class="toast hidden"></div>
 
 <script>
@@ -319,6 +405,18 @@
     if (className) e.className = className;
     if (text !== undefined) e.textContent = text;
     return e;
+  }
+
+  // Same visual shape as the footer nav's own <button><kbd>x</kbd> Label</button> markup —
+  // used for the detail view's Update/Delete, so they read as "the same kind of action" as
+  // the footer shortcuts, not as generic dialog buttons.
+  function navButton(key, label, onClick) {
+    const btn = el("button", "nav-btn");
+    btn.type = "button";
+    btn.appendChild(el("kbd", null, key));
+    btn.appendChild(document.createTextNode(" " + label));
+    btn.addEventListener("click", onClick);
+    return btn;
   }
 
   // ---- Date/time formatting (parity with tui/calendar_tui/screens.py) ----
@@ -435,6 +533,15 @@
 
   // ---- API ----
 
+  function extractErrorDetail(body) {
+    const detail = body && body.detail;
+    // Pydantic validation errors (422, e.g. "end is required for timed events") come back as a
+    // list of {msg, loc, ...} objects, not a plain string — every other error path here (401,
+    // 404, Google API failures) already sends a plain string.
+    if (Array.isArray(detail)) return detail.map((d) => d.msg || JSON.stringify(d)).join("; ");
+    return detail || "";
+  }
+
   async function apiFetch(path, options) {
     const res = await fetch(path, Object.assign({ credentials: "same-origin" }, options || {}));
     if (res.status === 401) {
@@ -444,10 +551,30 @@
     }
     if (!res.ok) {
       let detail = "";
-      try { detail = (await res.json()).detail || ""; } catch (_) { /* body wasn't JSON */ }
+      try { detail = extractErrorDetail(await res.json()); } catch (_) { /* body wasn't JSON */ }
       throw new Error(detail || `Request failed (${res.status})`);
     }
     return res;
+  }
+
+  function apiCreateEvent(payload) {
+    return apiFetch("/events", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then((res) => res.json());
+  }
+
+  function apiUpdateEvent(id, payload) {
+    return apiFetch(`/events/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then((res) => res.json());
+  }
+
+  function apiDeleteEvent(id) {
+    return apiFetch(`/events/${encodeURIComponent(id)}`, { method: "DELETE" });
   }
 
   async function fetchEvents(params) {
@@ -505,6 +632,9 @@
     timezone: loadPref("calendar-timezone", Intl.DateTimeFormat().resolvedOptions().timeZone),
     showClock: loadPref("calendar-show-clock", "true") !== "false",
     calendar: null,
+    detailEvent: null,
+    editingEvent: null,
+    pendingPayload: null,
   };
 
   document.documentElement.dataset.theme = state.theme;
@@ -531,6 +661,11 @@
   let currentOverlayCancel = null;
 
   function openOverlay(id, onCancel) {
+    // Auto-closes whatever was open before (e.g. detail-overlay → form-overlay) — silently, no
+    // cancel callback — so callers never have to remember to close one before opening the next.
+    if (currentOverlay && currentOverlay !== id) {
+      document.getElementById(currentOverlay).classList.add("hidden");
+    }
     currentOverlay = id;
     currentOverlayCancel = onCancel || null;
     document.getElementById(id).classList.remove("hidden");
@@ -560,8 +695,19 @@
     if (active) active.click();
   }
 
+  // Dismissing form-overlay/review-overlay doesn't just close them — it steps back one screen,
+  // same as popping a single screen off the TUI's stack (cancelling an edit lands back on that
+  // event's detail view, not all the way out to the agenda list; "Back" from review returns to
+  // the form with its values intact). Only form/review need this; every other overlay is a single
+  // step from the agenda screen already, so plain closeOverlay(cancelled) is correct for them.
+  function dismissOverlay(id) {
+    if (id === "form-overlay") cancelEventForm();
+    else if (id === "review-overlay") cancelReview();
+    else closeOverlay({ cancelled: true });
+  }
+
   document.querySelectorAll(".overlay").forEach((ov) => {
-    ov.addEventListener("click", (e) => { if (e.target === ov) closeOverlay({ cancelled: true }); });
+    ov.addEventListener("click", (e) => { if (e.target === ov) dismissOverlay(ov.id); });
   });
 
   // ---- Toast ----
@@ -677,6 +823,7 @@
   }
 
   function openDetail(event) {
+    state.detailEvent = event;
     const box = document.getElementById("detail-box");
     box.innerHTML = "";
     box.appendChild(el("h2", "detail-title", event.summary || "(no summary)"));
@@ -689,7 +836,178 @@
       row.appendChild(el("span", "detail-field-value", detailValue(event, field)));
       box.appendChild(row);
     });
+    if (!event.is_holiday) {
+      const actions = el("div", "detail-actions");
+      actions.appendChild(navButton("u", "Update", () => openEventForm(event)));
+      actions.appendChild(navButton("d", "Delete", () => confirmDeleteEvent(event)));
+      box.appendChild(actions);
+    }
     openOverlay("detail-overlay");
+  }
+
+  // ---- Event create/edit form, review, and delete confirmation ----
+  // Mirrors tui/calendar_tui/screens.py's EventFormScreen → ConfirmScreen → save flow: a review
+  // step always sits between filling the form and actually writing anything.
+
+  const RECURRENCE_PREFIXES = ["RRULE:", "EXRULE:", "RDATE:", "EXDATE:"];
+
+  function buildRecurrence(value) {
+    if (!value) return undefined;
+    const upper = value.toUpperCase();
+    if (RECURRENCE_PREFIXES.some((p) => upper.startsWith(p))) return [value];
+    return [`RRULE:${value}`];
+  }
+
+  function toggleAllDayFields(allDay) {
+    document.getElementById("form-timed-fields").classList.toggle("hidden", allDay);
+    document.getElementById("form-allday-fields").classList.toggle("hidden", !allDay);
+  }
+
+  function openEventForm(event) {
+    state.editingEvent = event || null;
+    document.getElementById("form-title").textContent = event ? "Edit Event" : "New Event";
+    const form = document.getElementById("event-form");
+    form.reset();
+    const allDay = event ? !!event.all_day : false;
+    document.getElementById("form-all-day").checked = allDay;
+    toggleAllDayFields(allDay);
+    if (event) {
+      document.getElementById("form-summary").value = event.summary || "";
+      document.getElementById("form-description").value = event.description || "";
+      document.getElementById("form-location").value = event.location || "";
+      if (allDay) {
+        document.getElementById("form-start-date").value = dayKey(event.start);
+        document.getElementById("form-end-date").value = dayKey(event.end);
+      } else {
+        document.getElementById("form-start-datetime").value = stripOffset(event.start).slice(0, 16);
+        document.getElementById("form-end-datetime").value = stripOffset(event.end).slice(0, 16);
+      }
+      const recurrence = (event.recurrence && event.recurrence[0]) || "";
+      document.getElementById("form-recurrence").value = recurrence.includes(":") ? recurrence.split(":")[1] : recurrence;
+    }
+    openOverlay("form-overlay");
+    document.getElementById("form-summary").focus();
+  }
+
+  function collectFormPayload() {
+    const allDay = document.getElementById("form-all-day").checked;
+    const payload = {
+      summary: document.getElementById("form-summary").value.trim(),
+      description: document.getElementById("form-description").value.trim(),
+      location: document.getElementById("form-location").value.trim(),
+      timezone: state.timezone,
+    };
+    if (allDay) {
+      payload.start = document.getElementById("form-start-date").value;
+      const end = document.getElementById("form-end-date").value;
+      if (end) payload.end = end;
+    } else {
+      payload.start = document.getElementById("form-start-datetime").value;
+      const end = document.getElementById("form-end-datetime").value;
+      if (end) payload.end = end;
+    }
+    const recurrence = buildRecurrence(document.getElementById("form-recurrence").value.trim());
+    if (recurrence) payload.recurrence = recurrence;
+    return payload;
+  }
+
+  document.getElementById("event-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const payload = collectFormPayload();
+    if (!payload.summary) { notify("Summary is required."); return; }
+    if (!payload.start) { notify("Start is required."); return; }
+    openReview(payload);
+  });
+
+  function cancelEventForm() {
+    const editing = state.editingEvent;
+    state.editingEvent = null;
+    closeOverlay();
+    if (editing) openDetail(editing);
+  }
+
+  document.getElementById("form-cancel-btn").addEventListener("click", cancelEventForm);
+  document.getElementById("form-all-day").addEventListener("change", (e) => toggleAllDayFields(e.target.checked));
+
+  function openReview(payload) {
+    state.pendingPayload = payload;
+    document.getElementById("review-title").textContent = state.editingEvent ? "Update event" : "Create event";
+    const body = document.getElementById("review-body");
+    body.innerHTML = "";
+    const lines = [["Summary", payload.summary]];
+    if (payload.description) lines.push(["Description", payload.description]);
+    if (payload.location) lines.push(["Location", payload.location]);
+    lines.push(["Start", payload.start]);
+    if (payload.end) lines.push(["End", payload.end]);
+    if (payload.recurrence) lines.push(["Recurrence", payload.recurrence[0]]);
+    lines.forEach(([label, value]) => {
+      const row = el("div", "detail-field");
+      row.appendChild(el("span", "detail-field-label", label + ": "));
+      row.appendChild(el("span", "detail-field-value", value));
+      body.appendChild(row);
+    });
+    openOverlay("review-overlay");
+  }
+
+  function cancelReview() {
+    openOverlay("form-overlay");
+  }
+
+  document.getElementById("review-back-btn").addEventListener("click", cancelReview);
+
+  document.getElementById("review-confirm-btn").addEventListener("click", async () => {
+    const payload = state.pendingPayload;
+    const editing = state.editingEvent;
+    try {
+      if (editing) await apiUpdateEvent(editing.id, payload);
+      else await apiCreateEvent(payload);
+    } catch (e) {
+      if (e.unauthorized) { showLoginScreen("Your session expired. Log in again."); return; }
+      notify(e.message);
+      return;
+    }
+    closeOverlay();
+    state.pendingPayload = null;
+    state.editingEvent = null;
+    actionRefresh();
+  });
+
+  // Generic confirm dialog — reused for both delete-event and logout, same dual use as the TUI's
+  // own ConfirmScreen.
+  let confirmCallback = null;
+
+  function openConfirm(message, onConfirm, confirmLabel) {
+    document.getElementById("confirm-message").textContent = message;
+    document.getElementById("confirm-ok-btn").textContent = confirmLabel || "Confirm";
+    confirmCallback = onConfirm;
+    openOverlay("confirm-overlay");
+  }
+
+  document.getElementById("confirm-ok-btn").addEventListener("click", () => {
+    const callback = confirmCallback;
+    confirmCallback = null;
+    closeOverlay();
+    if (callback) callback();
+  });
+  document.getElementById("confirm-cancel-btn").addEventListener("click", () => {
+    confirmCallback = null;
+    closeOverlay({ cancelled: true });
+  });
+
+  function confirmDeleteEvent(event) {
+    const summary = event.summary || "(no summary)";
+    openConfirm(`Delete "${summary}"? This can't be undone.`, () => performDelete(event), "Delete");
+  }
+
+  async function performDelete(event) {
+    try {
+      await apiDeleteEvent(event.id);
+    } catch (e) {
+      if (e.unauthorized) { showLoginScreen("Your session expired. Log in again."); return; }
+      notify(e.message);
+      return;
+    }
+    actionRefresh();
   }
 
   // ---- Options ----
@@ -710,7 +1028,7 @@
     else if (action === "theme") openThemeOverlay();
     else if (action === "clock") toggleClock();
     else if (action === "login") window.location.href = "/auth/login";
-    else if (action === "logout") performLogout();
+    else if (action === "logout") confirmLogout();
   });
 
   function toggleClock() {
@@ -721,6 +1039,16 @@
 
   function openAboutOverlay() {
     openOverlay("about-overlay");
+  }
+
+  function confirmLogout() {
+    openConfirm(
+      "Log out? The server forgets its stored copy of your Google credentials — " +
+        "you'll need to log in with Google again. This does not revoke access on Google's own " +
+        "end (Google Account → Security → Third-party access, if you want to remove it there too).",
+      performLogout,
+      "Log out"
+    );
   }
 
   async function performLogout() {
@@ -961,6 +1289,7 @@
 
   document.getElementById("btn-refresh").addEventListener("click", actionRefresh);
   document.getElementById("btn-calendar").addEventListener("click", openCalendarScreen);
+  document.getElementById("btn-new-event").addEventListener("click", () => openEventForm(null));
   document.getElementById("btn-options").addEventListener("click", openOptionsOverlay);
   document.getElementById("btn-about").addEventListener("click", openAboutOverlay);
   document.getElementById("btn-filter").addEventListener("click", openFilterOverlay);
@@ -975,7 +1304,7 @@
     const typing = tag === "input" || tag === "textarea";
 
     if (currentOverlay) {
-      if (e.key === "Escape") { e.preventDefault(); closeOverlay({ cancelled: true }); return; }
+      if (e.key === "Escape") { e.preventDefault(); dismissOverlay(currentOverlay); return; }
       if (typing) return;
       const container = document.getElementById(currentOverlay);
       if (e.key === "ArrowDown") {
@@ -989,7 +1318,13 @@
       } else if (e.key === "Enter") {
         e.preventDefault();
         if (currentOverlay === "about-overlay") document.getElementById("about-link").click();
+        else if (currentOverlay === "detail-overlay") closeOverlay();
+        else if (currentOverlay === "confirm-overlay") document.getElementById("confirm-ok-btn").click();
+        else if (currentOverlay === "review-overlay") document.getElementById("review-confirm-btn").click();
         else activateHighlighted(container);
+      } else if (currentOverlay === "detail-overlay" && state.detailEvent && !state.detailEvent.is_holiday) {
+        if (e.key === "u") openEventForm(state.detailEvent);
+        else if (e.key === "d") confirmDeleteEvent(state.detailEvent);
       }
       return;
     }
@@ -1000,6 +1335,7 @@
     if (screen === "agenda-screen") {
       if (e.key === "r") actionRefresh();
       else if (e.key === "c") openCalendarScreen();
+      else if (e.key === "n") openEventForm(null);
       else if (e.key === "o") openOptionsOverlay();
       else if (e.key === "a") openAboutOverlay();
       else if (e.key === "f") openFilterOverlay();
