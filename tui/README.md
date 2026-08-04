@@ -108,7 +108,7 @@ Press **`f`** from the event list to open a small menu:
 - **Clear filter** — only shown once a filter is active; goes back to the default "everything
   upcoming" view.
 
-**`Ctrl+F`** does the same as "Clear filter" without opening the menu first — it only shows up in
+**`Escape`** does the same as "Clear filter" without opening the menu first — it only shows up in
 the footer once a filter is actually active, same condition as the menu entry above.
 
 The active filter shows in the title ("Google Calendar Events — This month") and applies to

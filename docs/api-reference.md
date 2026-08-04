@@ -1,14 +1,17 @@
 # API Reference
 
 Base URL (local): `http://localhost:8088`. All request/response bodies are JSON. All routes
-except `/health`, `/auth/login`, and `/auth/callback` require:
+except `/health`, `/`, `/auth/login`, and `/auth/callback` require one of two equivalent proofs of
+identity, carrying the exact same JWT:
 
 ```
 Authorization: Bearer <token>
 ```
 
-where `<token>` is the JWT returned by `/auth/callback`. See `docs/architecture.md` for the
-session model. On `401`, re-authenticate via `/auth/login`.
+— used by every non-browser client (TUI, `calctl.sh`) — or an HttpOnly `session` cookie, set
+automatically by `/auth/callback` for the same-origin web client (`GET /`) and never touched by
+that client's own JS. See `docs/architecture.md`'s Session model section for how each is issued.
+On `401`, re-authenticate via `/auth/login`.
 
 Every route is rate-limited per client IP — `429` once exceeded. `/auth/login` and
 `/auth/callback` use a stricter limit (`AUTH_RATE_LIMIT`, default `10/minute`) than everything else
@@ -121,13 +124,23 @@ rather than `404`, briefly.
 
 ---
 
+## `GET /`
+
+The web client — a single self-contained `app/static/index.html`, same origin as the API. No
+auth required to load the page itself (it shows its own login screen if `GET /events` comes back
+`401`).
+
+**Response**: `200`, `text/html`.
+
+---
+
 ## `GET /auth/login`
 
 Start the Google OAuth flow. No auth required.
 
 **Query parameters**: `port` (optional, `1024`-`65535`). Only meant for a CLI/TUI client that
-can't read the JSON response `/auth/callback` normally returns — see that endpoint below for
-what supplying it changes.
+can't read a cookie the way a browser does — see `/auth/callback` below for what supplying it
+changes. The web client never passes this.
 
 **Response**: `307` redirect to Google's consent screen. Sets two short-lived (`max_age=300`)
 httponly cookies (`oauth_state`, `oauth_code_verifier`) used by `/auth/callback`, plus a third
@@ -143,11 +156,15 @@ parameter plus the cookies set by `/auth/login`.
 
 **Query parameters**: `code`, `state` (both required, supplied by Google).
 
-**Response**: `200`, `{"access_token": string, "token_type": "bearer"}` — unless `/auth/login`
-was called with `port`, in which case this is instead a `307` redirect to
-`http://127.0.0.1:<port>/callback?token=<access_token>` (the loopback-listening client captures
-it from there; see `docs/architecture.md`'s Google OAuth section for why). `400` on state
-mismatch, missing PKCE verifier, or missing `calendar.events` scope grant.
+**Response**: `307` redirect. Two cases:
+- `/auth/login` was called with `port` (the TUI's loopback login): redirects to
+  `http://127.0.0.1:<port>/callback?token=<access_token>` — the loopback-listening client
+  captures the token from there (see `docs/architecture.md`'s Google OAuth section for why).
+- Otherwise (the web client, `GET /`): redirects to `/`, setting the JWT as an HttpOnly, Secure,
+  `SameSite=Strict` `session` cookie — the browser carries it automatically on every request to
+  this API from then on, no token ever visible to page JS or sitting in a URL.
+
+`400` on state mismatch, missing PKCE verifier, or missing `calendar.events` scope grant.
 
 ---
 
@@ -155,8 +172,8 @@ mismatch, missing PKCE verifier, or missing `calendar.events` scope grant.
 
 End the current session. Auth required.
 
-**Response**: `200`, `{"detail": string}`. See `docs/architecture.md`'s Session model section for
-exactly what is and isn't invalidated.
+**Response**: `200`, `{"detail": string}`. Also clears the `session` cookie, if one was set. See
+`docs/architecture.md`'s Session model section for exactly what is and isn't invalidated.
 
 ---
 

@@ -15,7 +15,7 @@ response — there is otherwise no general multi-calendar support (see
 
 ```
 Client (web / TUI / CLI)
-    │  JSON over HTTP, Authorization: Bearer <JWT>
+    │  JSON over HTTP, Authorization: Bearer <JWT> or a "session" cookie (web client only)
     ▼
 API layer            app/auth.py, app/events.py
     │
@@ -45,7 +45,8 @@ its own connection — this is what makes it unit-testable without network acces
 | `app/schemas.py` | Pydantic request/response models (`EventInput`, `Event`) and all input validation. |
 | `app/calendar_service.py` | `CalendarService` — all Google Calendar API calls, response normalization, error translation. `get_calendar_service` FastAPI dependency wires it to a real, authenticated client. |
 | `app/events.py` | `/events` routes; time-range query parameter resolution. |
-| `app/main.py` | FastAPI app construction, router registration, startup (table creation), `/health`. |
+| `app/main.py` | FastAPI app construction, router registration, startup (table creation), `/health`, `GET /` (serves the web client). |
+| `app/static/index.html` | The web client — single self-contained HTML/CSS/JS file, same origin as the API. Not a Python module; see "Clients" below. |
 | `scripts/calctl.sh` | Reference CLI client; not part of the API itself. |
 
 ## Data model
@@ -85,25 +86,43 @@ Standard Authorization Code flow with PKCE, implemented in `app/google_oauth.py`
   `get_user_credentials` transparently refreshes an expired access token before every
   `CalendarService` call; callers never see this.
 
-`/auth/callback` normally hands the minted JWT back as raw JSON in the response body — fine for
-a browser (a human reads and copies it), useless for a non-interactive client like the TUI that
-has no way to read that response itself. For that case, `/auth/login` accepts an optional `port`
-query param; `/auth/callback` then redirects the browser a *second* time, to
-`http://127.0.0.1:<port>/callback?token=<jwt>`, instead of returning JSON. This is RFC 8252's
-"loopback interface redirection" pattern for native/CLI apps (the same approach `gcloud`/`gh` use)
-— the client starts a temporary local HTTP server on that port before opening the browser, and
-captures the token from the redirect itself, no copy-paste involved. Google's own registered
-redirect URI never changes (`build_flow()` always uses the single fixed `GOOGLE_REDIRECT_URI`) —
-the loopback hop only happens on the second redirect, entirely between this API and the client's
-local listener, both already under the same trust boundary. The token does end up briefly in a
-URL's query string, but only a `127.0.0.1`-only one: it never leaves the machine, unlike a token
-in a URL that could cross the network or land in a shared proxy/server log.
+`/auth/callback` hands the minted JWT back one of two ways, depending on who asked:
+
+- **The web client** (`app/static/index.html`, served at `GET /` — same origin as this API):
+  the default case. Redirects to `/`, setting the JWT as an `HttpOnly`, `Secure`,
+  `SameSite=Strict` `session` cookie. The token never touches the URL, a response body, or any
+  JS-readable storage — the browser just attaches the cookie automatically on every later
+  request. `HttpOnly` means an XSS bug in the page can't read the token itself and walk away
+  with it (it can still ride the session while its script is running, same as any XSS — see
+  below); `SameSite=Strict` is what makes that safe against CSRF (the cookie is never attached to
+  a request that didn't originate from this same site). No CORS is involved anywhere in this —
+  it's same-origin by construction, not cross-origin with an allowlist.
+- **A CLI/TUI client** (no way to receive a cookie or read a response body itself): `/auth/login`
+  accepts an optional `port` query param; `/auth/callback` then redirects the browser a *second*
+  time, to `http://127.0.0.1:<port>/callback?token=<jwt>`, instead of setting a cookie. This is
+  RFC 8252's "loopback interface redirection" pattern for native/CLI apps (the same approach
+  `gcloud`/`gh` use) — the client starts a temporary local HTTP server on that port before opening
+  the browser, and captures the token from the redirect itself, no copy-paste involved. The token
+  does end up briefly in a URL's query string, but only a `127.0.0.1`-only one: it never leaves
+  the machine, unlike a token in a URL that could cross the network or land in a shared proxy/
+  server log.
+
+Google's own registered redirect URI never changes either way (`build_flow()` always uses the
+single fixed `GOOGLE_REDIRECT_URI`) — both hops above happen entirely between this API and the
+client (browser or loopback listener), both already under the same trust boundary.
+
+`get_current_user` (`app/auth.py`) accepts the JWT from either transport — an `Authorization:
+Bearer <token>` header (TUI, `calctl.sh`, any non-browser client) or the `session` cookie (the web
+client) — validating the exact same token the same way regardless of which one carried it.
 
 ### Application session
 
-Stateless JWT (`HS256`), issued by `/auth/callback`, required as `Authorization: Bearer <token>`
-on every protected route. Payload: `{"sub": <user_id>, "sv": <session_version>, "exp": ...}`,
-24-hour lifetime.
+Stateless JWT (`HS256`), issued by `/auth/callback`, required on every protected route as either
+an `Authorization: Bearer <token>` header or a `session` cookie (see the Google OAuth section
+above for which clients get which). Payload: `{"sub": <user_id>, "sv": <session_version>, "exp":
+...}`,
+7-day lifetime (`app/security.py`'s `JWT_LIFETIME`) — matches how long Google itself keeps a
+refresh token alive while this app's OAuth consent screen is in Testing status.
 
 `get_current_user` (`app/auth.py`) validates, in order: signature + expiry (via `pyjwt`), that the
 referenced user still exists, and that the token's `sv` claim matches the user's *current*

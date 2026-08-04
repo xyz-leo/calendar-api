@@ -1,8 +1,8 @@
 import secrets
 
 import jwt as pyjwt
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
-from fastapi.responses import JSONResponse, RedirectResponse, Response
+from fastapi import APIRouter, Cookie, Depends, Header, HTTPException, Query, Request
+from fastapi.responses import RedirectResponse, Response
 from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token as google_id_token
 from sqlalchemy.orm import Session
@@ -12,15 +12,18 @@ from app.database import get_db
 from app.google_oauth import build_flow
 from app.models import User
 from app.rate_limit import limiter
-from app.security import create_access_token, decode_access_token, encrypt_token
+from app.security import JWT_LIFETIME, create_access_token, decode_access_token, encrypt_token
 
 router = APIRouter()
 
 STATE_COOKIE = "oauth_state"
 CODE_VERIFIER_COOKIE = "oauth_code_verifier"
 # Set only when /auth/login was asked to hand the token back via a local loopback
-# redirect instead of raw JSON (the TUI's login flow) — see /auth/callback below.
+# redirect instead of a cookie (the TUI's login flow) — see /auth/callback below.
 LOOPBACK_PORT_COOKIE = "oauth_loopback_port"
+# Holds the JWT itself for the same-origin web client (app/static/index.html, served at
+# GET /). HttpOnly so page JS can never read it — see /auth/callback and get_current_user.
+SESSION_COOKIE = "session"
 
 
 @router.get("/auth/login")
@@ -117,7 +120,27 @@ def callback(
     if loopback_port is not None:
         response = RedirectResponse(f"http://127.0.0.1:{int(loopback_port)}/callback?token={access_token}")
     else:
-        response = JSONResponse({"access_token": access_token, "token_type": "bearer"})
+        # The browser case (app/static/index.html, served at GET / — same origin as
+        # this API). The JWT never touches the URL or a JS-readable store: it's set
+        # as an HttpOnly cookie and the browser carries it automatically from here on.
+        # SameSite=Strict is what makes that safe against CSRF (the cookie is never
+        # attached to a request that didn't originate from this same site); Secure
+        # keeps it off plain HTTP. No CORS is involved — this is same-origin only.
+        response = RedirectResponse("/")
+        response.set_cookie(
+            SESSION_COOKIE,
+            access_token,
+            max_age=int(JWT_LIFETIME.total_seconds()),
+            httponly=True,
+            # Reflects the scheme the browser actually used (via Caddy's
+            # X-Forwarded-Proto in prod — see the Dockerfile's --proxy-headers flag),
+            # not hardcoded True: local dev serves plain http://localhost:8088, where
+            # a hardcoded Secure flag would silently stop the browser from ever
+            # storing the cookie at all.
+            secure=request.url.scheme == "https",
+            samesite="strict",
+            path="/",
+        )
     response.delete_cookie(STATE_COOKIE)
     response.delete_cookie(CODE_VERIFIER_COOKIE)
     response.delete_cookie(LOOPBACK_PORT_COOKIE)
@@ -125,12 +148,22 @@ def callback(
 
 
 def get_current_user(
-    authorization: str | None = Header(None), db: Session = Depends(get_db)
+    authorization: str | None = Header(None),
+    session: str | None = Cookie(default=None),
+    db: Session = Depends(get_db),
 ) -> User:
-    if not authorization or not authorization.startswith("Bearer "):
+    # Two independent transports for the exact same JWT: the Authorization header
+    # (TUI, calctl.sh, any non-browser client) and the HttpOnly session cookie (the
+    # web client, app/static/index.html — its own JS never sees the token, the
+    # browser just attaches this automatically on same-origin requests). Header
+    # wins if a caller somehow sent both.
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization.removeprefix("Bearer ")
+    elif session:
+        token = session
+    else:
         raise HTTPException(status_code=401, detail="Missing bearer token")
 
-    token = authorization.removeprefix("Bearer ")
     try:
         payload = decode_access_token(token)
     except pyjwt.PyJWTError:
@@ -151,12 +184,13 @@ def get_current_user(
 
 @router.post("/auth/logout")
 def logout(
-    current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
+    response: Response, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ) -> dict:
     current_user.session_version += 1
     current_user.encrypted_refresh_token = ""
     current_user.access_token = ""
     db.commit()
+    response.delete_cookie(SESSION_COOKIE, path="/")
     return {"detail": "Logged out. This token and any other active session are now invalid."}
 
 

@@ -17,4 +17,8 @@ RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 EXPOSE 8000
 
 ENTRYPOINT ["docker-entrypoint.sh"]
-CMD ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# --proxy-headers + --forwarded-allow-ips=* trust Caddy's X-Forwarded-Proto so
+# request.url.scheme reads "https" in prod (needed for the session cookie's Secure
+# flag, see app/auth.py) — safe here because this container is never reachable except
+# through that fixed reverse proxy (see docker-compose.yml's port binding/network).
+CMD ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips=*"]

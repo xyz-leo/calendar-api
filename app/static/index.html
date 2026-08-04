@@ -1,0 +1,1025 @@
+<!doctype html>
+<html lang="en" data-theme="calendar-tui">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>calendar-tui</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%85%3C/text%3E%3C/svg%3E">
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0d0d0d; --surface: #131313; --panel: #1c1717;
+    --primary: #cc6677; --secondary: #a8505c; --accent: #d4af37;
+    --fg: #ececec; --header: #39ff14; --error: #e0616e;
+    --holiday: #ff6a00;
+  }
+  [data-theme="dracula"] {
+    --bg: #282a36; --surface: #2f3140; --panel: #343746;
+    --primary: #bd93f9; --secondary: #6272a4; --accent: #ff79c6;
+    --fg: #f8f8f2; --header: #50fa7b; --error: #ff5555;
+  }
+  [data-theme="nord"] {
+    --bg: #2e3440; --surface: #333a48; --panel: #3b4252;
+    --primary: #88c0d0; --secondary: #4c566a; --accent: #ebcb8b;
+    --fg: #eceff4; --header: #a3be8c; --error: #bf616a;
+  }
+  [data-theme="gruvbox-dark"] {
+    --bg: #282828; --surface: #32302f; --panel: #3c3836;
+    --primary: #fe8019; --secondary: #928374; --accent: #fabd2f;
+    --fg: #ebdbb2; --header: #b8bb26; --error: #fb4934;
+  }
+  [data-theme="catppuccin-mocha"] {
+    --bg: #1e1e2e; --surface: #24243a; --panel: #313244;
+    --primary: #f5c2e7; --secondary: #6c7086; --accent: #f9e2af;
+    --fg: #cdd6f4; --header: #a6e3a1; --error: #f38ba8;
+  }
+  [data-theme="solarized-dark"] {
+    --bg: #002b36; --surface: #05323d; --panel: #073642;
+    --primary: #268bd2; --secondary: #586e75; --accent: #b58900;
+    --fg: #eee8d5; --header: #859900; --error: #dc322f;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font-family: ui-monospace, "SF Mono", "Cascadia Code", "Fira Code", Menlo, Consolas, "Liberation Mono", monospace;
+    background: var(--bg);
+    color: var(--fg);
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    transition: background-color 0.2s ease, color 0.2s ease;
+  }
+  * { scrollbar-width: thin; scrollbar-color: var(--primary) var(--panel); }
+  *::-webkit-scrollbar { width: 8px; height: 8px; }
+  *::-webkit-scrollbar-track { background: var(--panel); }
+  *::-webkit-scrollbar-thumb { background: var(--primary); border-radius: 8px; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .hidden { display: none !important; }
+  .screen { flex: 1; display: flex; flex-direction: column; min-height: 100dvh; }
+  .screen.centered { align-items: center; justify-content: center; padding: 1rem; }
+
+  .box {
+    background: var(--surface);
+    border: 1px solid var(--primary);
+    border-radius: 14px;
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary) 25%, transparent), 0 12px 40px rgba(0, 0, 0, 0.45);
+    padding: clamp(1rem, 4vw, 2rem);
+  }
+
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;
+    padding: 0.75rem 1.5rem; border-radius: 10px; border: 1px solid var(--primary);
+    background: var(--primary); color: var(--bg); font-weight: 700; text-decoration: none;
+    cursor: pointer; font-family: inherit; font-size: 1rem;
+    transition: transform 0.1s ease, box-shadow 0.15s ease;
+  }
+  .btn:hover { box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 25%, transparent); }
+  .btn:active { transform: scale(0.98); }
+  .btn-ghost { background: transparent; color: var(--fg); }
+
+  /* --- Login --- */
+  .login-box { max-width: 420px; width: 100%; text-align: center; }
+  .brand { font-size: clamp(1.3rem, 5vw, 1.8rem); font-weight: 700; color: var(--accent); letter-spacing: 0.06em; margin-bottom: 0.5rem; }
+  .hint { color: var(--fg); opacity: 0.85; margin-bottom: 1.5rem; line-height: 1.5; }
+
+  /* --- Agenda --- */
+  #agenda-screen { padding: clamp(0.5rem, 3vw, 1.5rem); padding-bottom: calc(76px + env(safe-area-inset-bottom)); }
+  .panel { max-width: 900px; margin: 0 auto; width: 100%; display: flex; flex-direction: column; flex: 1; min-height: 0; }
+  #clock-wrap { text-align: center; padding-top: clamp(0.25rem, 3vw, 1rem); }
+  .clock-time {
+    font-size: clamp(2rem, 9vw, 3.75rem); font-weight: 700; color: var(--primary); letter-spacing: 0.05em;
+    text-shadow: 0 0 18px color-mix(in srgb, var(--primary) 55%, transparent);
+  }
+  .clock-date { color: var(--fg); opacity: 0.85; margin-top: 0.35rem; font-size: clamp(0.85rem, 2.2vw, 1.05rem); }
+  .agenda-title { text-align: center; color: var(--accent); font-size: clamp(1rem, 3vw, 1.35rem); font-weight: 700; margin: 1rem 0; }
+  .agenda-list {
+    flex: 1; min-height: 0; overflow-y: auto;
+    background: var(--surface); border: 1px solid var(--primary); border-radius: 14px; padding: 0.5rem 0.25rem;
+  }
+  .agenda-day-header { color: var(--header); font-weight: 700; padding: 0.5rem 1rem 0.25rem; font-size: clamp(0.85rem, 2.4vw, 1rem); }
+  .agenda-spacer { height: 0.5rem; }
+  .agenda-row {
+    display: flex; align-items: baseline; gap: 0.6rem; padding: 0.45rem 1rem; border-radius: 8px;
+    cursor: pointer; font-size: clamp(0.85rem, 2.3vw, 1rem);
+  }
+  .agenda-row:hover { background: color-mix(in srgb, var(--primary) 12%, transparent); }
+  .agenda-row.selected { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); font-weight: 700; }
+  .agenda-row .marker { color: var(--primary); width: 1ch; flex: none; }
+  .agenda-row.selected .marker:not(.holiday) { color: var(--accent); }
+  .agenda-row .marker.holiday { color: var(--holiday) !important; }
+  .agenda-row .time-label { opacity: 0.8; min-width: 6.5ch; flex: none; }
+  .agenda-row .summary { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .agenda-empty { text-align: center; padding: 2rem; opacity: 0.6; }
+
+  /* --- Footer nav --- */
+  .footer-nav {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    display: flex; flex-wrap: wrap; justify-content: center; gap: 0.4rem;
+    background: var(--panel); border-top: 1px solid var(--primary);
+    padding: 0.5rem calc(0.5rem + env(safe-area-inset-left)) calc(0.5rem + env(safe-area-inset-bottom));
+    z-index: 20;
+  }
+  .footer-nav button {
+    display: flex; align-items: center; gap: 0.4rem;
+    background: transparent; border: 1px solid transparent; color: var(--fg);
+    padding: 0.5rem 0.75rem; border-radius: 8px; font-family: inherit;
+    font-size: clamp(0.75rem, 2vw, 0.9rem); cursor: pointer; min-height: 40px;
+  }
+  .footer-nav button:hover, .footer-nav button:focus-visible {
+    border-color: var(--primary); background: color-mix(in srgb, var(--primary) 12%, transparent);
+  }
+  .footer-nav kbd {
+    background: var(--bg); color: var(--accent); border: 1px solid var(--accent);
+    border-radius: 4px; padding: 0.05rem 0.4rem; font-size: 0.8em; font-family: inherit;
+  }
+
+  /* --- Overlays (Options / Timezone / Theme / Filter / Detail) --- */
+  .overlay {
+    position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+    background: rgba(0, 0, 0, 0.55); backdrop-filter: blur(2px); z-index: 30; padding: 1rem;
+  }
+  .overlay .box { width: 100%; max-width: 420px; max-height: 80vh; overflow-y: auto; }
+  .overlay h2 { margin: 0 0 1rem; text-align: center; color: var(--accent); font-size: clamp(1rem, 3vw, 1.25rem); }
+  .option-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.15rem; }
+  .option-item { padding: 0.6rem 0.9rem; border-radius: 8px; cursor: pointer; font-size: clamp(0.85rem, 2.2vw, 1rem); }
+  .option-item:hover { background: color-mix(in srgb, var(--primary) 12%, transparent); }
+  .option-item.active { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); font-weight: 700; }
+
+  .filter-pick-row { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; padding: 0.6rem 0.9rem; }
+  .filter-pick-row label { opacity: 0.85; font-size: clamp(0.8rem, 2vw, 0.95rem); }
+  .filter-pick-row input {
+    font-family: inherit; background: var(--bg); color: var(--fg); border: 1px solid var(--primary);
+    border-radius: 8px; padding: 0.35rem 0.5rem;
+  }
+  #filter-clear-btn { display: block; width: 100%; margin-top: 0.5rem; }
+
+  /* --- Calendar --- */
+  #calendar-screen { padding: 1rem; padding-bottom: calc(76px + env(safe-area-inset-bottom)); }
+  .calendar-box { width: 100%; max-width: 360px; }
+  .calendar-month {
+    text-align: center; font-weight: 700; color: var(--accent); font-size: clamp(1rem, 3.2vw, 1.25rem);
+    padding: 0.4rem; border-radius: 8px; cursor: pointer; margin-bottom: 0.5rem;
+  }
+  .calendar-month.header-cursor { background: var(--accent); color: var(--bg); }
+  .calendar-weekdays {
+    display: grid; grid-template-columns: repeat(7, 1fr); text-align: center;
+    color: var(--accent); font-size: clamp(0.7rem, 2vw, 0.85rem); margin-bottom: 0.25rem;
+  }
+  .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 0.2rem; }
+  .calendar-cell {
+    aspect-ratio: 1; display: flex; align-items: center; justify-content: center;
+    border-radius: 8px; font-size: clamp(0.8rem, 2.4vw, 1rem); cursor: pointer;
+  }
+  .calendar-cell.empty { cursor: default; }
+  .calendar-cell:not(.empty):hover { background: color-mix(in srgb, var(--primary) 15%, transparent); }
+  .calendar-cell.cursor { background: var(--accent); color: var(--bg); font-weight: 700; }
+  .calendar-cell.holiday { color: var(--holiday); font-weight: 700; }
+  .calendar-cell.has-event { color: var(--primary); font-weight: 700; }
+  .calendar-cell.today { color: var(--accent); font-weight: 700; }
+
+  /* --- Event detail --- */
+  .detail-box { max-width: 480px; }
+  .detail-title { margin: 0 0 0.75rem; color: var(--accent); font-size: clamp(1rem, 3vw, 1.2rem); text-align: center; }
+  .detail-holiday-badge { text-align: center; color: var(--holiday); margin-bottom: 0.75rem; font-size: 0.85rem; }
+  .detail-field { padding: 0.35rem 0; font-size: clamp(0.85rem, 2.2vw, 0.95rem); line-height: 1.5; }
+  .detail-field-label { color: var(--accent); font-weight: 700; }
+
+  /* --- Toast --- */
+  .toast {
+    position: fixed; top: 1rem; left: 50%; transform: translateX(-50%);
+    background: var(--error); color: #1a1a1a; padding: 0.6rem 1rem; border-radius: 8px;
+    font-size: 0.9rem; z-index: 50; max-width: 90vw; text-align: center; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  }
+</style>
+</head>
+<body>
+
+  <div id="login-screen" class="screen centered hidden">
+    <div class="box login-box">
+      <div class="brand">calendar-tui</div>
+      <p class="hint" id="login-message">Log in with your Google account to see your calendar.</p>
+      <a class="btn" href="/auth/login">Log in with Google</a>
+    </div>
+  </div>
+
+  <div id="agenda-screen" class="screen hidden">
+    <div class="panel">
+      <div id="clock-wrap">
+        <div class="clock-time" id="clock-time"></div>
+        <div class="clock-date" id="clock-date"></div>
+      </div>
+      <h1 class="agenda-title" id="agenda-title">Google Calendar Events</h1>
+      <div class="agenda-list" id="agenda-list"></div>
+    </div>
+    <nav class="footer-nav">
+      <button type="button" id="btn-refresh"><kbd>r</kbd> Refresh</button>
+      <button type="button" id="btn-calendar"><kbd>c</kbd> Calendar</button>
+      <button type="button" id="btn-options"><kbd>o</kbd> Options</button>
+      <button type="button" id="btn-filter"><kbd>f</kbd> Filter</button>
+      <button type="button" id="clear-filter-btn" class="hidden"><kbd>esc</kbd> Clear filter</button>
+    </nav>
+  </div>
+
+  <div id="calendar-screen" class="screen centered hidden">
+    <div class="box calendar-box">
+      <div class="calendar-month" id="calendar-month"></div>
+      <div class="calendar-weekdays" id="calendar-weekdays"></div>
+      <div class="calendar-grid" id="calendar-grid"></div>
+    </div>
+    <nav class="footer-nav">
+      <button type="button" id="cal-back-btn"><kbd>esc</kbd> Back</button>
+      <button type="button" id="cal-jump-btn"><kbd>enter</kbd> Jump to day</button>
+    </nav>
+  </div>
+
+  <div id="options-overlay" class="overlay hidden">
+    <div class="box">
+      <h2>Options</h2>
+      <ul class="option-list" id="options-list">
+        <li class="option-item active" data-action="timezone" tabindex="0">Timezone</li>
+        <li class="option-item" data-action="theme" tabindex="0">Theme</li>
+        <li class="option-item" data-action="clock" tabindex="0">Toggle clock on/off</li>
+        <li class="option-item" data-action="login" tabindex="0">Login</li>
+        <li class="option-item" data-action="logout" tabindex="0">Logout</li>
+      </ul>
+    </div>
+  </div>
+
+  <div id="timezone-overlay" class="overlay hidden">
+    <div class="box">
+      <h2>Pick your timezone</h2>
+      <ul class="option-list" id="timezone-list"></ul>
+    </div>
+  </div>
+
+  <div id="theme-overlay" class="overlay hidden">
+    <div class="box">
+      <h2>Pick a theme</h2>
+      <ul class="option-list" id="theme-list"></ul>
+    </div>
+  </div>
+
+  <div id="filter-overlay" class="overlay hidden">
+    <div class="box">
+      <h2>Filter by date</h2>
+      <ul class="option-list" id="filter-list">
+        <li class="option-item active" data-range="today" tabindex="0">Today</li>
+        <li class="option-item" data-range="week" tabindex="0">This week</li>
+        <li class="option-item" data-range="month" tabindex="0">This month</li>
+        <li class="option-item" data-holidays tabindex="0">Holidays only</li>
+      </ul>
+      <div class="filter-pick-row">
+        <label for="filter-pick-month">Pick month</label>
+        <input type="month" id="filter-pick-month">
+      </div>
+      <div class="filter-pick-row">
+        <label for="filter-pick-date">Pick date</label>
+        <input type="date" id="filter-pick-date">
+      </div>
+      <button type="button" class="btn btn-ghost hidden" id="filter-clear-btn">Clear filter</button>
+    </div>
+  </div>
+
+  <div id="detail-overlay" class="overlay hidden">
+    <div class="box detail-box" id="detail-box"></div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+
+<script>
+(function () {
+  "use strict";
+
+  function el(tag, className, text) {
+    const e = document.createElement(tag);
+    if (className) e.className = className;
+    if (text !== undefined) e.textContent = text;
+    return e;
+  }
+
+  // ---- Date/time formatting (parity with tui/calendar_tui/screens.py) ----
+
+  const OFFSET_RE = /[+-]\d{2}:\d{2}$/;
+
+  function stripOffset(value) {
+    return value.replace(OFFSET_RE, "");
+  }
+
+  function dayKey(value) {
+    return stripOffset(value).slice(0, 10);
+  }
+
+  function dayHeaderLabel(value) {
+    const [y, m, d] = dayKey(value).split("-").map(Number);
+    const utcDate = new Date(Date.UTC(y, m - 1, d));
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: "UTC", weekday: "short", month: "short", day: "numeric",
+    }).formatToParts(utcDate);
+    const map = {};
+    parts.forEach((p) => { map[p.type] = p.value; });
+    return `${map.weekday} ${map.month} ${map.day}`.toLowerCase();
+  }
+
+  function agendaTimeLabel(value, allDay) {
+    if (allDay) return "all-day";
+    const timePart = stripOffset(value).split("T")[1];
+    return timePart ? timePart.slice(0, 5) : "all-day";
+  }
+
+  function formatDateTimeFull(value, allDay) {
+    const stripped = stripOffset(value);
+    const [datePart, timePart] = stripped.split("T");
+    if (!timePart || allDay) return datePart;
+    return `${datePart} — ${timePart.slice(0, 5)}`;
+  }
+
+  function formatClockTime(date, timeZone) {
+    return new Intl.DateTimeFormat("en-GB", {
+      timeZone, hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
+    }).format(date);
+  }
+
+  function formatClockDate(date, timeZone) {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone, weekday: "short", month: "long", day: "numeric", year: "numeric",
+    }).formatToParts(date);
+    const map = {};
+    parts.forEach((p) => { map[p.type] = p.value; });
+    return `${map.weekday}, ${map.month} ${map.day}, ${map.year}`.toLowerCase();
+  }
+
+  function monthLabel(year, month) {
+    return new Date(Date.UTC(year, month - 1, 1))
+      .toLocaleDateString("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
+  }
+
+  function dayLabel(year, month, day) {
+    return new Date(Date.UTC(year, month - 1, day))
+      .toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" })
+      .toLowerCase();
+  }
+
+  // Approximates the UTC offset in effect for a given wall-clock instant in an
+  // IANA zone (used to build `from`/`to` query bounds, same purpose Python's
+  // zoneinfo serves in the TUI). Can be off by up to an hour on the ~2 days a
+  // year a DST transition happens — an acceptable approximation for a filter
+  // day/month boundary, not something worth a full timezone library for.
+  function tzOffset(instant, timeZone) {
+    const parts = new Intl.DateTimeFormat("en-US", { timeZone, timeZoneName: "longOffset" }).formatToParts(instant);
+    const raw = parts.find((p) => p.type === "timeZoneName").value;
+    const m = raw.match(/GMT([+-]\d{2}):?(\d{2})?/);
+    return m ? `${m[1]}:${m[2] || "00"}` : "+00:00";
+  }
+
+  function isoInZone(y, m, d, hh, mm, ss, timeZone) {
+    const approx = new Date(Date.UTC(y, m - 1, d, hh, mm, ss));
+    const offset = tzOffset(approx, timeZone);
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${y}-${pad(m)}-${pad(d)}T${pad(hh)}:${pad(mm)}:${pad(ss)}${offset}`;
+  }
+
+  function monthBounds(year, month, timeZone) {
+    const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+    return {
+      from: isoInZone(year, month, 1, 0, 0, 0, timeZone),
+      to: isoInZone(year, month, lastDay, 23, 59, 59, timeZone),
+    };
+  }
+
+  function dayBounds(year, month, day, timeZone) {
+    return {
+      from: isoInZone(year, month, day, 0, 0, 0, timeZone),
+      to: isoInZone(year, month, day, 23, 59, 59, timeZone),
+    };
+  }
+
+  function buildWeeks(year, month) {
+    const firstWeekday = new Date(Date.UTC(year, month - 1, 1)).getUTCDay();
+    const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+    const weeks = [];
+    let week = new Array(firstWeekday).fill(0);
+    for (let day = 1; day <= daysInMonth; day++) {
+      week.push(day);
+      if (week.length === 7) { weeks.push(week); week = []; }
+    }
+    if (week.length) {
+      while (week.length < 7) week.push(0);
+      weeks.push(week);
+    }
+    return weeks;
+  }
+
+  // ---- API ----
+
+  async function apiFetch(path, options) {
+    const res = await fetch(path, Object.assign({ credentials: "same-origin" }, options || {}));
+    if (res.status === 401) {
+      const err = new Error("unauthorized");
+      err.unauthorized = true;
+      throw err;
+    }
+    if (!res.ok) {
+      let detail = "";
+      try { detail = (await res.json()).detail || ""; } catch (_) { /* body wasn't JSON */ }
+      throw new Error(detail || `Request failed (${res.status})`);
+    }
+    return res;
+  }
+
+  async function fetchEvents(params) {
+    const qs = new URLSearchParams();
+    if (params) {
+      Object.keys(params).forEach((k) => {
+        if (params[k] !== undefined && params[k] !== null) qs.set(k, params[k]);
+      });
+    }
+    const query = qs.toString();
+    const res = await apiFetch("/events" + (query ? `?${query}` : ""));
+    return res.json();
+  }
+
+  async function apiLogout() {
+    await apiFetch("/auth/logout", { method: "POST" });
+  }
+
+  // ---- State ----
+
+  const COMMON_TIMEZONES = [
+    "America/Sao_Paulo", "America/Manaus", "America/Rio_Branco", "America/Belem",
+    "America/Fortaleza", "America/Recife", "America/Bahia",
+    "America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles",
+    "America/Anchorage", "Pacific/Honolulu",
+    "UTC", "America/Mexico_City", "America/Bogota", "America/Argentina/Buenos_Aires",
+    "America/Santiago", "Europe/London", "Europe/Lisbon", "Europe/Paris", "Europe/Berlin",
+    "Europe/Madrid", "Europe/Rome", "Europe/Moscow", "Africa/Johannesburg", "Asia/Dubai",
+    "Asia/Kolkata", "Asia/Shanghai", "Asia/Tokyo", "Asia/Singapore", "Australia/Sydney",
+    "Pacific/Auckland",
+  ];
+
+  const THEMES = [
+    { id: "calendar-tui", label: "calendar-tui" },
+    { id: "dracula", label: "Dracula" },
+    { id: "nord", label: "Nord" },
+    { id: "gruvbox-dark", label: "Gruvbox Dark" },
+    { id: "catppuccin-mocha", label: "Catppuccin Mocha" },
+    { id: "solarized-dark", label: "Solarized Dark" },
+  ];
+
+  function loadPref(key, fallback) {
+    const value = localStorage.getItem(key);
+    return value === null ? fallback : value;
+  }
+  function savePref(key, value) { localStorage.setItem(key, value); }
+
+  const state = {
+    events: {},
+    eventOrder: [],
+    agendaIndex: 0,
+    filterParams: null,
+    filterLabel: null,
+    theme: loadPref("calendar-theme", "calendar-tui"),
+    timezone: loadPref("calendar-timezone", Intl.DateTimeFormat().resolvedOptions().timeZone),
+    showClock: loadPref("calendar-show-clock", "true") !== "false",
+    calendar: null,
+  };
+
+  document.documentElement.dataset.theme = state.theme;
+
+  // ---- Screens ----
+
+  const SCREENS = ["login-screen", "agenda-screen", "calendar-screen"];
+  function showScreen(id) {
+    SCREENS.forEach((s) => document.getElementById(s).classList.toggle("hidden", s !== id));
+  }
+  function currentScreen() {
+    return SCREENS.find((s) => !document.getElementById(s).classList.contains("hidden"));
+  }
+
+  function showLoginScreen(message) {
+    document.getElementById("login-message").textContent =
+      message || "Log in with your Google account to see your calendar.";
+    showScreen("login-screen");
+  }
+
+  // ---- Overlays ----
+
+  let currentOverlay = null;
+  let currentOverlayCancel = null;
+
+  function openOverlay(id, onCancel) {
+    currentOverlay = id;
+    currentOverlayCancel = onCancel || null;
+    document.getElementById(id).classList.remove("hidden");
+  }
+
+  function closeOverlay(opts) {
+    if (!currentOverlay) return;
+    if (opts && opts.cancelled && currentOverlayCancel) currentOverlayCancel();
+    document.getElementById(currentOverlay).classList.add("hidden");
+    currentOverlay = null;
+    currentOverlayCancel = null;
+  }
+
+  function navigateOptionList(container, delta) {
+    const items = Array.from(container.querySelectorAll(".option-item"));
+    if (!items.length) return null;
+    let idx = items.findIndex((i) => i.classList.contains("active"));
+    items.forEach((i) => i.classList.remove("active"));
+    idx = (idx + delta + items.length) % items.length;
+    items[idx].classList.add("active");
+    items[idx].scrollIntoView({ block: "nearest" });
+    return items[idx];
+  }
+
+  function activateHighlighted(container) {
+    const active = container.querySelector(".option-item.active");
+    if (active) active.click();
+  }
+
+  document.querySelectorAll(".overlay").forEach((ov) => {
+    ov.addEventListener("click", (e) => { if (e.target === ov) closeOverlay({ cancelled: true }); });
+  });
+
+  // ---- Toast ----
+
+  let toastTimer = null;
+  function notify(message) {
+    const toast = document.getElementById("toast");
+    toast.textContent = message;
+    toast.classList.remove("hidden");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toast.classList.add("hidden"), 4000);
+  }
+
+  // ---- Agenda ----
+
+  function buildAgendaRow(event, highlighted) {
+    const row = el("div", "agenda-row" + (highlighted ? " selected" : ""));
+    const isHoliday = !!event.is_holiday;
+    row.appendChild(el("span", "marker" + (isHoliday ? " holiday" : ""), highlighted ? "›" : "●"));
+    row.appendChild(el("span", "time-label", isHoliday ? "holiday" : agendaTimeLabel(event.start, event.all_day)));
+    row.appendChild(el("span", "summary", event.summary || "(no summary)"));
+    return row;
+  }
+
+  function renderAgenda() {
+    const list = document.getElementById("agenda-list");
+    list.innerHTML = "";
+    let currentDay = null;
+    state.eventOrder.forEach((id, idx) => {
+      const event = state.events[id];
+      const day = dayKey(event.start);
+      if (day !== currentDay) {
+        if (currentDay !== null) list.appendChild(el("div", "agenda-spacer"));
+        list.appendChild(el("div", "agenda-day-header", dayHeaderLabel(event.start)));
+        currentDay = day;
+      }
+      const row = buildAgendaRow(event, idx === state.agendaIndex);
+      row.addEventListener("click", () => {
+        state.agendaIndex = idx;
+        renderAgenda();
+        openDetail(event);
+      });
+      list.appendChild(row);
+    });
+    if (!state.eventOrder.length) {
+      list.appendChild(el("div", "agenda-empty", "No events."));
+    }
+    const selected = list.querySelector(".agenda-row.selected");
+    if (selected) selected.scrollIntoView({ block: "nearest" });
+  }
+
+  function moveAgendaSelection(delta) {
+    if (!state.eventOrder.length) return;
+    state.agendaIndex = Math.max(0, Math.min(state.eventOrder.length - 1, state.agendaIndex + delta));
+    renderAgenda();
+  }
+
+  function openSelectedEventDetail() {
+    const id = state.eventOrder[state.agendaIndex];
+    if (!id) return;
+    openDetail(state.events[id]);
+  }
+
+  function refreshAgendaTitle() {
+    document.getElementById("agenda-title").textContent =
+      state.filterLabel ? `Google Calendar Events — ${state.filterLabel}` : "Google Calendar Events";
+    document.getElementById("clear-filter-btn").classList.toggle("hidden", !state.filterLabel);
+  }
+
+  async function actionRefresh() {
+    try {
+      const events = await fetchEvents(state.filterParams);
+      state.events = {};
+      state.eventOrder = events.map((ev) => ev.id);
+      events.forEach((ev) => { state.events[ev.id] = ev; });
+      state.agendaIndex = 0;
+      renderAgenda();
+    } catch (e) {
+      if (e.unauthorized) { showLoginScreen("Your session expired. Log in again."); return; }
+      notify(e.message);
+    }
+  }
+
+  function applyFilter(params, label) {
+    state.filterParams = params;
+    state.filterLabel = label;
+    closeOverlay();
+    refreshAgendaTitle();
+    actionRefresh();
+  }
+
+  function clearFilter() {
+    state.filterParams = null;
+    state.filterLabel = null;
+    if (currentOverlay) closeOverlay();
+    refreshAgendaTitle();
+    actionRefresh();
+  }
+
+  // ---- Event detail ----
+
+  const DETAIL_FIELDS = [
+    ["Description", "description"], ["Location", "location"], ["Start", "start"],
+    ["End", "end"], ["All day", "all_day"], ["Status", "status"],
+  ];
+
+  function detailValue(event, field) {
+    const value = event[field];
+    if (value === null || value === undefined || value === "") return "—";
+    if (field === "start" || field === "end") return formatDateTimeFull(value, event.all_day);
+    if (field === "all_day") return value ? "yes" : "no";
+    return String(value);
+  }
+
+  function openDetail(event) {
+    const box = document.getElementById("detail-box");
+    box.innerHTML = "";
+    box.appendChild(el("h2", "detail-title", event.summary || "(no summary)"));
+    if (event.is_holiday) {
+      box.appendChild(el("div", "detail-holiday-badge", "Holiday — read-only, from Google's public calendar"));
+    }
+    DETAIL_FIELDS.forEach(([label, field]) => {
+      const row = el("div", "detail-field");
+      row.appendChild(el("span", "detail-field-label", label + ": "));
+      row.appendChild(el("span", "detail-field-value", detailValue(event, field)));
+      box.appendChild(row);
+    });
+    openOverlay("detail-overlay");
+  }
+
+  // ---- Options ----
+
+  function openOptionsOverlay() {
+    const items = document.querySelectorAll("#options-list .option-item");
+    items.forEach((i) => i.classList.remove("active"));
+    items[0].classList.add("active");
+    openOverlay("options-overlay");
+  }
+
+  document.getElementById("options-list").addEventListener("click", (e) => {
+    const item = e.target.closest(".option-item");
+    if (!item) return;
+    const action = item.dataset.action;
+    closeOverlay();
+    if (action === "timezone") openTimezoneOverlay();
+    else if (action === "theme") openThemeOverlay();
+    else if (action === "clock") toggleClock();
+    else if (action === "login") window.location.href = "/auth/login";
+    else if (action === "logout") performLogout();
+  });
+
+  function toggleClock() {
+    state.showClock = !state.showClock;
+    savePref("calendar-show-clock", state.showClock);
+    document.getElementById("clock-wrap").classList.toggle("hidden", !state.showClock);
+  }
+
+  async function performLogout() {
+    // The cookie is what actually matters — if this request fails (e.g. the
+    // server is briefly unreachable), showing the login screen anyway is still
+    // the right outcome, not a dead end the user gets stuck behind.
+    try { await apiLogout(); } catch (_) { /* fall through regardless */ }
+    showLoginScreen();
+  }
+
+  // ---- Timezone ----
+
+  function openTimezoneOverlay() {
+    const list = document.getElementById("timezone-list");
+    list.innerHTML = "";
+    COMMON_TIMEZONES.forEach((tz) => {
+      const li = el("li", "option-item", tz);
+      li.tabIndex = 0;
+      li.dataset.value = tz;
+      if (tz === state.timezone) li.classList.add("active");
+      list.appendChild(li);
+    });
+    openOverlay("timezone-overlay");
+    const active = list.querySelector(".active");
+    if (active) active.scrollIntoView({ block: "center" });
+  }
+
+  document.getElementById("timezone-list").addEventListener("click", (e) => {
+    const item = e.target.closest(".option-item");
+    if (!item) return;
+    state.timezone = item.dataset.value;
+    savePref("calendar-timezone", state.timezone);
+    closeOverlay();
+  });
+
+  // ---- Theme ----
+
+  function openThemeOverlay() {
+    const list = document.getElementById("theme-list");
+    list.innerHTML = "";
+    THEMES.forEach((t) => {
+      const li = el("li", "option-item", t.label);
+      li.tabIndex = 0;
+      li.dataset.value = t.id;
+      if (t.id === state.theme) li.classList.add("active");
+      list.appendChild(li);
+    });
+    openOverlay("theme-overlay", () => { document.documentElement.dataset.theme = state.theme; });
+  }
+
+  document.getElementById("theme-list").addEventListener("click", (e) => {
+    const item = e.target.closest(".option-item");
+    if (!item) return;
+    state.theme = item.dataset.value;
+    document.documentElement.dataset.theme = state.theme;
+    savePref("calendar-theme", state.theme);
+    closeOverlay();
+  });
+
+  document.getElementById("theme-list").addEventListener("mouseover", (e) => {
+    const item = e.target.closest(".option-item");
+    if (!item) return;
+    document.querySelectorAll("#theme-list .option-item").forEach((i) => i.classList.remove("active"));
+    item.classList.add("active");
+    document.documentElement.dataset.theme = item.dataset.value;
+  });
+
+  // ---- Filter ----
+
+  function openFilterOverlay() {
+    document.getElementById("filter-clear-btn").classList.toggle("hidden", !state.filterLabel);
+    const items = document.querySelectorAll("#filter-list .option-item");
+    items.forEach((i) => i.classList.remove("active"));
+    items[0].classList.add("active");
+    openOverlay("filter-overlay");
+  }
+
+  document.getElementById("filter-list").addEventListener("click", (e) => {
+    const item = e.target.closest(".option-item");
+    if (!item) return;
+    if (item.dataset.range) applyFilter({ range: item.dataset.range }, item.textContent);
+    else if (item.hasAttribute("data-holidays")) applyFilter({ only_holidays: "true" }, "Holidays only");
+  });
+
+  document.getElementById("filter-pick-month").addEventListener("change", (e) => {
+    const value = e.target.value;
+    if (!value) return;
+    const [year, month] = value.split("-").map(Number);
+    const bounds = monthBounds(year, month, state.timezone);
+    applyFilter(bounds, monthLabel(year, month));
+  });
+
+  document.getElementById("filter-pick-date").addEventListener("change", (e) => {
+    const value = e.target.value;
+    if (!value) return;
+    const [year, month, day] = value.split("-").map(Number);
+    const bounds = dayBounds(year, month, day, state.timezone);
+    applyFilter(bounds, dayLabel(year, month, day));
+  });
+
+  document.getElementById("filter-clear-btn").addEventListener("click", clearFilter);
+
+  // ---- Calendar ----
+
+  function todayInZone(timeZone) {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone, year: "numeric", month: "2-digit", day: "2-digit",
+    }).formatToParts(new Date());
+    const map = {};
+    parts.forEach((p) => { map[p.type] = p.value; });
+    return { year: Number(map.year), month: Number(map.month), day: Number(map.day) };
+  }
+
+  function openCalendarScreen() {
+    const today = todayInZone(state.timezone);
+    const cal = {
+      todayYear: today.year, todayMonth: today.month, todayDay: today.day,
+      year: today.year, month: today.month,
+      cursorMode: "grid", cursorRow: 0, cursorCol: 0,
+      weeks: buildWeeks(today.year, today.month),
+      eventDays: new Set(), holidayDays: new Set(),
+    };
+    for (let r = 0; r < cal.weeks.length; r++) {
+      const c = cal.weeks[r].indexOf(today.day);
+      if (c !== -1) { cal.cursorRow = r; cal.cursorCol = c; break; }
+    }
+    state.calendar = cal;
+    showScreen("calendar-screen");
+    refreshCalendarEvents().then(renderCalendarGrid);
+  }
+
+  async function refreshCalendarEvents() {
+    const cal = state.calendar;
+    const bounds = monthBounds(cal.year, cal.month, state.timezone);
+    cal.eventDays = new Set();
+    cal.holidayDays = new Set();
+    try {
+      const events = await fetchEvents(bounds);
+      const monthPrefix = `${cal.year}-${String(cal.month).padStart(2, "0")}`;
+      events.forEach((ev) => {
+        const dayStr = dayKey(ev.start);
+        if (dayStr.slice(0, 7) !== monthPrefix) return;
+        const day = Number(dayStr.slice(8, 10));
+        (ev.is_holiday ? cal.holidayDays : cal.eventDays).add(day);
+      });
+    } catch (e) {
+      if (e.unauthorized) { showLoginScreen("Your session expired. Log in again."); return; }
+      notify(e.message);
+    }
+  }
+
+  function renderCalendarGrid() {
+    const cal = state.calendar;
+    if (!cal) return;
+
+    const monthEl = document.getElementById("calendar-month");
+    monthEl.textContent = monthLabel(cal.year, cal.month);
+    monthEl.classList.toggle("header-cursor", cal.cursorMode === "header");
+    monthEl.onclick = () => { cal.cursorMode = "header"; calendarSelect(); };
+
+    const weekdaysEl = document.getElementById("calendar-weekdays");
+    if (!weekdaysEl.childElementCount) {
+      ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].forEach((w) => weekdaysEl.appendChild(el("span", "calendar-weekday", w)));
+    }
+
+    const grid = document.getElementById("calendar-grid");
+    grid.innerHTML = "";
+    cal.weeks.forEach((week, row) => {
+      week.forEach((day, col) => {
+        if (!day) { grid.appendChild(el("div", "calendar-cell empty")); return; }
+        const cell = el("div", "calendar-cell", String(day));
+        const isCursor = cal.cursorMode === "grid" && row === cal.cursorRow && col === cal.cursorCol;
+        const isToday = day === cal.todayDay && cal.year === cal.todayYear && cal.month === cal.todayMonth;
+        if (isCursor) cell.classList.add("cursor");
+        else if (cal.holidayDays.has(day)) cell.classList.add("holiday");
+        else if (cal.eventDays.has(day)) cell.classList.add("has-event");
+        else if (isToday) cell.classList.add("today");
+        cell.addEventListener("click", () => {
+          cal.cursorMode = "grid"; cal.cursorRow = row; cal.cursorCol = col;
+          calendarSelect();
+        });
+        grid.appendChild(cell);
+      });
+    });
+  }
+
+  function closeCalendarScreen() { showScreen("agenda-screen"); }
+
+  function calendarSelect() {
+    const cal = state.calendar;
+    if (cal.cursorMode === "header") {
+      const bounds = monthBounds(cal.year, cal.month, state.timezone);
+      showScreen("agenda-screen");
+      applyFilter(bounds, monthLabel(cal.year, cal.month));
+      return;
+    }
+    const day = cal.weeks[cal.cursorRow][cal.cursorCol];
+    if (!day) return;
+    const bounds = dayBounds(cal.year, cal.month, day, state.timezone);
+    showScreen("agenda-screen");
+    applyFilter(bounds, dayLabel(cal.year, cal.month, day));
+  }
+
+  function calendarCursorUp() {
+    const cal = state.calendar;
+    if (cal.cursorMode !== "grid") return;
+    if (cal.cursorRow === 0) cal.cursorMode = "header";
+    else cal.cursorRow -= 1;
+    renderCalendarGrid();
+  }
+  function calendarCursorDown() {
+    const cal = state.calendar;
+    if (cal.cursorMode === "header") cal.cursorMode = "grid";
+    else cal.cursorRow = Math.min(cal.cursorRow + 1, cal.weeks.length - 1);
+    renderCalendarGrid();
+  }
+  function calendarCursorLeft() {
+    const cal = state.calendar;
+    if (cal.cursorMode === "header") calendarChangeMonth(-1);
+    else { cal.cursorCol = Math.max(cal.cursorCol - 1, 0); renderCalendarGrid(); }
+  }
+  function calendarCursorRight() {
+    const cal = state.calendar;
+    if (cal.cursorMode === "header") calendarChangeMonth(1);
+    else { cal.cursorCol = Math.min(cal.cursorCol + 1, 6); renderCalendarGrid(); }
+  }
+  function calendarChangeMonth(delta) {
+    const cal = state.calendar;
+    let month = cal.month + delta;
+    let year = cal.year;
+    if (month === 0) { month = 12; year -= 1; }
+    else if (month === 13) { month = 1; year += 1; }
+    cal.year = year; cal.month = month;
+    cal.weeks = buildWeeks(year, month);
+    cal.cursorRow = Math.min(cal.cursorRow, cal.weeks.length - 1);
+    refreshCalendarEvents().then(renderCalendarGrid);
+  }
+
+  document.getElementById("btn-refresh").addEventListener("click", actionRefresh);
+  document.getElementById("btn-calendar").addEventListener("click", openCalendarScreen);
+  document.getElementById("btn-options").addEventListener("click", openOptionsOverlay);
+  document.getElementById("btn-filter").addEventListener("click", openFilterOverlay);
+  document.getElementById("clear-filter-btn").addEventListener("click", clearFilter);
+  document.getElementById("cal-back-btn").addEventListener("click", closeCalendarScreen);
+  document.getElementById("cal-jump-btn").addEventListener("click", calendarSelect);
+
+  // ---- Keyboard (mirrors tui/calendar_tui/screens.py's BINDINGS) ----
+
+  document.addEventListener("keydown", (e) => {
+    const tag = (e.target.tagName || "").toLowerCase();
+    const typing = tag === "input" || tag === "textarea";
+
+    if (currentOverlay) {
+      if (e.key === "Escape") { e.preventDefault(); closeOverlay({ cancelled: true }); return; }
+      if (typing) return;
+      const container = document.getElementById(currentOverlay);
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        const active = navigateOptionList(container, 1);
+        if (currentOverlay === "theme-overlay" && active) document.documentElement.dataset.theme = active.dataset.value;
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        const active = navigateOptionList(container, -1);
+        if (currentOverlay === "theme-overlay" && active) document.documentElement.dataset.theme = active.dataset.value;
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        activateHighlighted(container);
+      }
+      return;
+    }
+
+    if (typing) return;
+    const screen = currentScreen();
+
+    if (screen === "agenda-screen") {
+      if (e.key === "r") actionRefresh();
+      else if (e.key === "c") openCalendarScreen();
+      else if (e.key === "o") openOptionsOverlay();
+      else if (e.key === "f") openFilterOverlay();
+      else if (e.key === "Escape") { if (state.filterLabel) clearFilter(); }
+      else if (e.key === "ArrowDown") { e.preventDefault(); moveAgendaSelection(1); }
+      else if (e.key === "ArrowUp") { e.preventDefault(); moveAgendaSelection(-1); }
+      else if (e.key === "Enter") openSelectedEventDetail();
+    } else if (screen === "calendar-screen") {
+      if (e.key === "Escape") closeCalendarScreen();
+      else if (e.key === "Enter") calendarSelect();
+      else if (e.key === "ArrowUp") { e.preventDefault(); calendarCursorUp(); }
+      else if (e.key === "ArrowDown") { e.preventDefault(); calendarCursorDown(); }
+      else if (e.key === "ArrowLeft") { e.preventDefault(); if (e.ctrlKey) calendarChangeMonth(-1); else calendarCursorLeft(); }
+      else if (e.key === "ArrowRight") { e.preventDefault(); if (e.ctrlKey) calendarChangeMonth(1); else calendarCursorRight(); }
+    }
+  });
+
+  // ---- Clock ----
+
+  function startClock() {
+    const tick = () => {
+      const now = new Date();
+      document.getElementById("clock-time").textContent = formatClockTime(now, state.timezone);
+      document.getElementById("clock-date").textContent = formatClockDate(now, state.timezone);
+    };
+    tick();
+    setInterval(tick, 1000);
+  }
+
+  // ---- Bootstrap ----
+
+  async function bootstrap() {
+    document.getElementById("clock-wrap").classList.toggle("hidden", !state.showClock);
+    startClock();
+    try {
+      const events = await fetchEvents(null);
+      state.events = {};
+      state.eventOrder = events.map((ev) => ev.id);
+      events.forEach((ev) => { state.events[ev.id] = ev; });
+      showScreen("agenda-screen");
+      renderAgenda();
+    } catch (e) {
+      if (e.unauthorized) showLoginScreen();
+      else showLoginScreen("Could not reach the server. Check your connection and reload.");
+    }
+  }
+
+  document.addEventListener("DOMContentLoaded", bootstrap);
+})();
+</script>
+</body>
+</html>

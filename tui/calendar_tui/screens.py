@@ -253,7 +253,7 @@ class EventListScreen(Screen):
         ("n", "create", "New event"),
         ("o", "options", "Options"),
         ("f", "filter", "Filter"),
-        ("ctrl+f", "clear_filter", "Clear filter"),
+        ("escape", "clear_filter", "Clear filter"),
     ]
 
     def __init__(self) -> None:

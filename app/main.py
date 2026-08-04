@@ -1,6 +1,8 @@
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import Depends, FastAPI
+from fastapi.responses import FileResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
@@ -11,6 +13,8 @@ from app.auth import router as auth_router
 from app.database import Base, engine, get_db
 from app.events import router as events_router
 from app.rate_limit import limiter
+
+STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 
 @asynccontextmanager
@@ -30,6 +34,13 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
 app.include_router(auth_router)
 app.include_router(events_router)
+
+
+@app.get("/", include_in_schema=False)
+def index() -> FileResponse:
+    # The read-only web client — same origin as the API itself (see app/auth.py's
+    # cookie-based login branch), so it needs no CORS and no configurable server URL.
+    return FileResponse(STATIC_DIR / "index.html")
 
 
 @app.get("/health")

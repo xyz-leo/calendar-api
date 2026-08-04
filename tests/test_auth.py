@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 
 import pytest
-from fastapi import HTTPException
+from fastapi import HTTPException, Response
 from fastapi.testclient import TestClient
 
 from app.auth import LOOPBACK_PORT_COOKIE, get_current_user, logout
@@ -61,11 +61,33 @@ def test_token_for_nonexistent_user_is_401(db_session):
     assert exc_info.value.status_code == 401
 
 
+def test_session_cookie_resolves_to_the_right_user(db_session):
+    # The web client (app/static/index.html) never sends an Authorization header —
+    # its JWT lives only in the HttpOnly "session" cookie the browser attaches
+    # automatically. This is the second transport get_current_user accepts.
+    user = _make_user(db_session)
+    token = create_access_token(user.id, user.session_version)
+
+    resolved = get_current_user(authorization=None, session=token, db=db_session)
+
+    assert resolved.id == user.id
+
+
+def test_authorization_header_wins_over_session_cookie(db_session):
+    user = _make_user(db_session)
+    token = create_access_token(user.id, user.session_version)
+    other_user_token = create_access_token(user_id=99999, session_version=0)
+
+    resolved = get_current_user(authorization=f"Bearer {token}", session=other_user_token, db=db_session)
+
+    assert resolved.id == user.id
+
+
 def test_logout_bumps_session_version_and_invalidates_old_token(db_session):
     user = _make_user(db_session)
     old_token = create_access_token(user.id, user.session_version)
 
-    logout(current_user=user, db=db_session)
+    logout(response=Response(), current_user=user, db=db_session)
 
     assert user.session_version == 1
     with pytest.raises(HTTPException) as exc_info:
@@ -77,7 +99,7 @@ def test_logout_bumps_session_version_and_invalidates_old_token(db_session):
 def test_logout_clears_google_tokens(db_session):
     user = _make_user(db_session)
 
-    logout(current_user=user, db=db_session)
+    logout(response=Response(), current_user=user, db=db_session)
 
     assert user.encrypted_refresh_token == ""
     assert user.access_token == ""
@@ -85,12 +107,23 @@ def test_logout_clears_google_tokens(db_session):
 
 def test_fresh_token_after_logout_is_valid_again(db_session):
     user = _make_user(db_session)
-    logout(current_user=user, db=db_session)
+    logout(response=Response(), current_user=user, db=db_session)
 
     new_token = create_access_token(user.id, user.session_version)
     resolved = get_current_user(authorization=f"Bearer {new_token}", db=db_session)
 
     assert resolved.id == user.id
+
+
+def test_logout_clears_the_session_cookie(db_session):
+    user = _make_user(db_session)
+    response = Response()
+
+    logout(response=response, current_user=user, db=db_session)
+
+    set_cookie = response.headers.get("set-cookie", "")
+    assert "session=" in set_cookie
+    assert "max-age=0" in set_cookie.lower()
 
 
 # /auth/login's `port` query param is how a CLI/TUI client asks /auth/callback to
