@@ -149,6 +149,21 @@ def test_login_with_valid_port_sets_loopback_cookie():
     assert response.cookies[LOOPBACK_PORT_COOKIE] == "54123"
 
 
+def test_login_cookies_are_samesite_lax():
+    # Regression guard for the security review's cookie-flag finding: these two (plus
+    # the loopback one) previously set no SameSite/Secure at all, relying entirely on
+    # Starlette's own default. Explicit now — this asserts the actual behavior, not an
+    # implicit library default. Lax (not Strict) is required for the state/verifier
+    # cookies specifically: they have to survive the cross-site top-level redirect
+    # Google itself sends the browser back through on the way to /auth/callback.
+    response = client.get("/auth/login", params={"port": 54123})
+
+    set_cookie_headers = response.headers.get_list("set-cookie")
+    assert len(set_cookie_headers) == 3
+    for header in set_cookie_headers:
+        assert "samesite=lax" in header.lower()
+
+
 @pytest.mark.parametrize("port", [80, 1023, 65536, 99999999])
 def test_login_with_out_of_range_port_is_422(port):
     response = client.get("/auth/login", params={"port": port})

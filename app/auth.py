@@ -5,6 +5,7 @@ from fastapi import APIRouter, Cookie, Depends, Header, HTTPException, Query, Re
 from fastapi.responses import RedirectResponse, Response
 from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token as google_id_token
+from oauthlib.oauth2.rfc6749.errors import OAuth2Error
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -37,13 +38,21 @@ def login(
         include_granted_scopes="true",
         prompt="consent",
     )
+    # secure=... mirrors /auth/callback's session cookie below: reflects the scheme the
+    # browser actually used rather than being hardcoded True, so local dev (plain
+    # http://localhost:8088) still gets these cookies stored at all. samesite="lax" (not
+    # "strict") because this cookie has to survive the redirect *to* Google and *back* —
+    # Google's own redirect to /auth/callback is a top-level navigation from a different
+    # site, which a Strict cookie wouldn't be attached to; Lax still blocks it being sent
+    # on cross-site subrequests (images, fetches, etc.), just not top-level navigations.
+    secure = request.url.scheme == "https"
     response = RedirectResponse(authorization_url)
-    response.set_cookie(STATE_COOKIE, state, max_age=300, httponly=True)
+    response.set_cookie(STATE_COOKIE, state, max_age=300, httponly=True, secure=secure, samesite="lax")
     # PKCE: the verifier is generated inside authorization_url() above and lives only on
     # this Flow instance. The callback request builds a separate Flow, so it must be
     # handed the same verifier explicitly, the same way `state` is passed via cookie.
     response.set_cookie(
-        CODE_VERIFIER_COOKIE, flow.code_verifier, max_age=300, httponly=True
+        CODE_VERIFIER_COOKIE, flow.code_verifier, max_age=300, httponly=True, secure=secure, samesite="lax"
     )
     # A CLI/TUI client (no way to receive the JSON response below directly) passes its
     # own local loopback port here; /auth/callback redirects the token there instead of
@@ -51,7 +60,9 @@ def login(
     # time /auth/callback reads this back it's from a cookie this server set, never from
     # anything in that request itself.
     if port is not None:
-        response.set_cookie(LOOPBACK_PORT_COOKIE, str(port), max_age=300, httponly=True)
+        response.set_cookie(
+            LOOPBACK_PORT_COOKIE, str(port), max_age=300, httponly=True, secure=secure, samesite="lax"
+        )
     return response
 
 
@@ -68,7 +79,16 @@ def callback(
         raise HTTPException(status_code=400, detail="Missing OAuth code verifier")
 
     flow = build_flow(code_verifier=code_verifier)
-    flow.fetch_token(code=code)
+    try:
+        flow.fetch_token(code=code)
+    except OAuth2Error as e:
+        # A code that's expired, already used, or was never real (someone hitting this
+        # endpoint directly with a guessed/replayed code) — Google's token endpoint
+        # rejects it and oauthlib raises this. Previously unhandled, surfacing as a raw
+        # 500 with no useful message; this is the same clean-error treatment every other
+        # Google-facing failure in this codebase already gets (see
+        # calendar_service.py's _execute).
+        raise HTTPException(status_code=400, detail=f"Google rejected the login: {e}")
     credentials = flow.credentials
 
     if not credentials.has_scopes(["https://www.googleapis.com/auth/calendar.events"]):

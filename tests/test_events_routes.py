@@ -1,3 +1,4 @@
+import pytest
 from fastapi.testclient import TestClient
 
 from app.calendar_service import CalendarService, get_calendar_service
@@ -82,3 +83,26 @@ def test_index_route_serves_the_web_client():
     response = client.get("/")
     assert response.status_code == 200
     assert "text/html" in response.headers["content-type"]
+
+
+@pytest.mark.parametrize("path", ["/docs", "/redoc", "/openapi.json"])
+def test_auto_generated_docs_are_disabled(path):
+    # Security review finding: these were reachable by anyone, unauthenticated — the
+    # full API schema plus an interactive "try it out" console, for free. FastAPI's
+    # default; explicitly disabled in app/main.py now.
+    client = TestClient(app)
+    response = client.get(path)
+    assert response.status_code == 404
+
+
+def test_security_headers_are_present():
+    # "/" rather than "/health": the latter touches the DB, which fails outside the
+    # Docker container in this dev environment (DATABASE_URL points at /app/data) —
+    # unrelated to what this test actually checks.
+    client = TestClient(app)
+    response = client.get("/")
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert response.headers["x-frame-options"] == "DENY"
+    assert response.headers["referrer-policy"] == "no-referrer"
+    assert "max-age=" in response.headers["strict-transport-security"]
+    assert "default-src 'self'" in response.headers["content-security-policy"]

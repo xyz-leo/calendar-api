@@ -161,7 +161,12 @@ across multiple replicas if this were ever scaled horizontally.
 
 - `RATE_LIMIT` (`Settings.rate_limit`, default `"60/minute"`) is passed as the `Limiter`'s
   `default_limits` and applies automatically to every route via `SlowAPIMiddleware`
-  (registered in `app/main.py`), with no per-route decorator needed.
+  (registered in `app/main.py`), with no per-route decorator needed. **Per (client IP, route)**,
+  not one shared budget across the whole API — `slowapi` keys each `default_limits` check by
+  `scope or endpoint` (see its `extension.py`), and no explicit `scope` is set here. In practice
+  this means the real aggregate ceiling from one IP is closer to `RATE_LIMIT × <route count>` than
+  `RATE_LIMIT` on its own suggests — confirmed live against production in
+  `tmp/learning-security-testing.md`.
 - `AUTH_RATE_LIMIT` (`Settings.auth_rate_limit`, default `"10/minute"`) overrides that default
   specifically on `/auth/login` and `/auth/callback` (`@limiter.limit(settings.auth_rate_limit)`
   in `app/auth.py`) — the more common target for abuse (credential stuffing, hammering the OAuth
