@@ -1,46 +1,14 @@
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, Query, Response
 
+from app.agenda_service import AgendaService, get_agenda_service
 from app.calendar_service import CalendarService, get_calendar_service
 from app.schemas import Event, EventInput
+from app.time_range import resolve_time_range
 
 router = APIRouter()
-
-# "range" is a convenience so a client never has to compute dates itself for the
-# common cases — each window always starts from now, only the end differs.
-_RANGE_END = {
-    "today": lambda now: now.replace(hour=23, minute=59, second=59, microsecond=999999),
-    "week": lambda now: now + timedelta(days=7),
-    "month": lambda now: now + timedelta(days=30),
-}
-
-
-def _ensure_utc(dt: datetime) -> datetime:
-    # A "from"/"to" query value with no offset (e.g. "2026-08-15T10:00:00") parses
-    # as naive — Google's API requires an explicit offset, so assume UTC rather
-    # than reject it (same convention EventInput already uses for start/end).
-    return dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
-
-
-def _resolve_time_range(
-    from_: datetime | None, to: datetime | None, range_: str | None
-) -> tuple[datetime, datetime | None]:
-    now = datetime.now(timezone.utc)
-
-    if range_ is not None:
-        if from_ is not None or to is not None:
-            raise HTTPException(status_code=400, detail="Cannot combine 'range' with 'from'/'to'")
-        return now, _RANGE_END[range_](now)
-
-    if from_ is not None or to is not None:
-        time_min = _ensure_utc(from_) if from_ is not None else now
-        time_max = _ensure_utc(to) if to is not None else None
-        return time_min, time_max
-
-    # Default: everything upcoming, no end cutoff.
-    return now, None
 
 
 @router.get("/events")
@@ -49,10 +17,13 @@ def list_events(
     to: datetime | None = Query(None),
     range_: Literal["today", "week", "month"] | None = Query(None, alias="range"),
     only_holidays: bool = Query(False),
-    service: CalendarService = Depends(get_calendar_service),
+    only_tasks: bool = Query(False),
+    service: AgendaService = Depends(get_agenda_service),
 ) -> list[Event]:
-    time_min, time_max = _resolve_time_range(from_, to, range_)
-    return service.list_events(time_min=time_min, time_max=time_max, only_holidays=only_holidays)
+    time_min, time_max = resolve_time_range(from_, to, range_)
+    return service.list_agenda(
+        time_min=time_min, time_max=time_max, only_holidays=only_holidays, only_tasks=only_tasks
+    )
 
 
 @router.get("/events/{event_id}")

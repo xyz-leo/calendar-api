@@ -109,6 +109,59 @@ class FakeGoogleClient:
         return _FakeEventsResource(self)
 
 
+class _FakeTasksResource:
+    def __init__(self, client: "FakeTasksClient"):
+        self._client = client
+
+    def _dequeue(self, method: str, kwargs: dict) -> _FakeRequest:
+        self._client.calls.append((method, kwargs))
+        queue = self._client._queues.get(method)
+        if not queue:
+            raise AssertionError(f"No queued response for tasks().{method}({kwargs})")
+        return queue.pop(0)
+
+    def list(self, **kwargs):
+        return self._dequeue("list", kwargs)
+
+    def get(self, **kwargs):
+        return self._dequeue("get", kwargs)
+
+    def insert(self, **kwargs):
+        return self._dequeue("insert", kwargs)
+
+    def patch(self, **kwargs):
+        return self._dequeue("patch", kwargs)
+
+    def delete(self, **kwargs):
+        return self._dequeue("delete", kwargs)
+
+
+class FakeTasksClient:
+    """Stands in for the object build("tasks", "v1", ...) returns — same shape as
+    FakeGoogleClient, just for TaskService's tasks().<method>(**kwargs).execute()
+    calls instead of CalendarService's events().<method>(...) ones."""
+
+    def __init__(self):
+        self.calls: list[tuple[str, dict]] = []
+        self._queues: dict[str, list[_FakeRequest]] = {}
+
+    def queue(self, method: str, result=None, error: Exception | None = None) -> None:
+        self._queues.setdefault(method, []).append(_FakeRequest(result=result, error=error))
+
+    def tasks(self):
+        return _FakeTasksResource(self)
+
+
+def raw_task(
+    task_id: str = "task1",
+    title: str = "Test task",
+    due: str = "2026-08-15T00:00:00.000Z",
+    status: str = "needsAction",
+    **extra,
+) -> dict:
+    return {"id": task_id, "title": title, "due": due, "status": status, **extra}
+
+
 def raw_timed_event(
     event_id: str = "evt1",
     summary: str = "Test event",

@@ -12,7 +12,16 @@
     --bg: #0d0d0d; --surface: #131313; --panel: #1c1717;
     --primary: #a62639; --secondary: #7a1c2b; --accent: #d4af37;
     --fg: #ececec; --header: #39ff14; --error: #e0616e;
-    --holiday: #ff6a00;
+    /* Neon green — reuses the same hex --header already uses. Tasks get the
+       orange holidays used to have, reused as-is, not a new shade. */
+    --holiday: #39ff14;
+    --task: #ff6a00;
+    /* text color for content sitting on top of a --primary/--accent
+       fill (buttons, cursor cells) - defaults to --bg, which reads fine
+       on every dark theme's bright accent colors. Light themes below
+       override this directly, since their --bg is light and would be
+       unreadable on top of an equally light-ish accent fill. */
+    --on-accent: var(--bg);
   }
   [data-theme="dracula"] {
     --bg: #282a36; --surface: #2f3140; --panel: #343746;
@@ -38,6 +47,53 @@
     --bg: #002b36; --surface: #05323d; --panel: #073642;
     --primary: #268bd2; --secondary: #586e75; --accent: #b58900;
     --fg: #eee8d5; --header: #859900; --error: #dc322f;
+  }
+  [data-theme="hacker-green"] {
+    /* monochrome-green CRT phosphor look, like an old amber/green
+       terminal - bg stays true black, everything else is a shade of
+       the same green rather than an unrelated accent color. */
+    --bg: #000000; --surface: #001500; --panel: #002200;
+    --primary: #00ff41; --secondary: #008f11; --accent: #39ff14;
+    --fg: #2fdc4e; --header: #7fff9f; --error: #ff3b3b;
+  }
+  [data-theme="purple-haze"] {
+    --bg: #150f1e; --surface: #1f1729; --panel: #281c35;
+    --primary: #b57bff; --secondary: #6b4c8a; --accent: #ff9df5;
+    --fg: #e6dbf5; --header: #c9a6ff; --error: #ff6b81;
+  }
+  [data-theme="soft-pink"] {
+    /* the one light theme meant to read as "pink", not "dark theme
+       with a pink accent" - bg itself is a barely-tinted white. */
+    color-scheme: light;
+    --bg: #fff6f9; --surface: #ffffff; --panel: #ffe6ee;
+    --primary: #ff8fab; --secondary: #ffc2d1; --accent: #ff5c8a;
+    --fg: #5c333f; --header: #e0356f; --error: #d1264f;
+    --on-accent: #3a1420;
+  }
+  [data-theme="github-dark"] {
+    /* GitHub's own dark theme palette (Dimmed-adjacent, not exact) -
+       blue for links/primary actions, green reserved for header/
+       success the way GitHub uses it for merged PRs, checks, etc. */
+    --bg: #0d1117; --surface: #161b22; --panel: #21262d;
+    --primary: #58a6ff; --secondary: #30363d; --accent: #d29922;
+    --fg: #c9d1d9; --header: #3fb950; --error: #f85149;
+  }
+  [data-theme="contrast-black"] {
+    /* maximum contrast, dark: true black behind plain white - no hue
+       anywhere, for when a color glow isn't the point. */
+    --bg: #000000; --surface: #0d0d0d; --panel: #1a1a1a;
+    --primary: #ffffff; --secondary: #888888; --accent: #ffffff;
+    --fg: #ffffff; --header: #ffffff; --error: #ff5252;
+  }
+  [data-theme="contrast-cream"] {
+    /* maximum contrast, light: same idea inverted, but a warm cream
+       instead of stark white behind the text - easier on the eyes for
+       long reading than a true #fff background. */
+    color-scheme: light;
+    --bg: #f5efdf; --surface: #faf6ea; --panel: #ece3cc;
+    --primary: #1a1a1a; --secondary: #6b6b6b; --accent: #1a1a1a;
+    --fg: #1c1608; --header: #000000; --error: #b3261e;
+    --on-accent: #f5efdf;
   }
 
   * { box-sizing: border-box; }
@@ -72,7 +128,7 @@
   .btn {
     display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;
     padding: 0.75rem 1.5rem; border-radius: var(--radius); border: 1px solid var(--primary);
-    background: var(--primary); color: var(--bg); font-weight: 700; text-decoration: none;
+    background: var(--primary); color: var(--on-accent); font-weight: 700; text-decoration: none;
     cursor: pointer; font-family: inherit; font-size: 1rem;
     transition: transform 0.1s ease, box-shadow 0.15s ease;
   }
@@ -116,10 +172,12 @@
   .agenda-row:hover { background: color-mix(in srgb, var(--primary) 12%, transparent); }
   .agenda-row.selected { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); font-weight: 700; }
   .agenda-row .marker { color: var(--primary); width: 1ch; flex: none; }
-  .agenda-row.selected .marker:not(.holiday) { color: var(--accent); }
+  .agenda-row.selected .marker:not(.holiday):not(.task) { color: var(--accent); }
   .agenda-row .marker.holiday { color: var(--holiday) !important; }
+  .agenda-row .marker.task { color: var(--task) !important; }
   .agenda-row .time-label { opacity: 0.8; min-width: 6.5ch; flex: none; }
   .agenda-row .summary { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .agenda-row .time-label.done { text-decoration: line-through; }
   .agenda-empty { text-align: center; padding: 2rem; opacity: 0.6; }
 
   /* --- Footer nav --- */
@@ -189,12 +247,12 @@
   .form-box, .review-box, .confirm-box { max-width: 480px; }
   .form-label { display: block; margin: 0.75rem 0 0.3rem; opacity: 0.85; font-size: clamp(0.8rem, 2vw, 0.9rem); }
   #event-form input[type="text"], #event-form input[type="date"], #event-form input[type="datetime-local"],
-  #event-form textarea {
+  #event-form textarea, #event-form select {
     width: 100%; font-family: inherit; font-size: clamp(0.85rem, 2.2vw, 0.95rem);
     background: var(--bg); color: var(--fg); border: 1px solid var(--primary);
-    border-radius: var(--radius); padding: 0.45rem 0.6rem; color-scheme: dark; resize: vertical;
+    border-radius: var(--radius); padding: 0.45rem 0.6rem; resize: vertical;
   }
-  #event-form input:focus, #event-form textarea:focus { border-color: var(--accent); }
+  #event-form input:focus, #event-form textarea:focus, #event-form select:focus { border-color: var(--accent); }
   .form-checkbox-row { display: flex; align-items: center; gap: 0.5rem; margin-top: 1rem; cursor: pointer; }
   .form-checkbox-row input { accent-color: var(--primary); width: 1.1rem; height: 1.1rem; }
   .form-actions, .confirm-actions {
@@ -220,7 +278,7 @@
     flex: 1; text-align: center; font-weight: 700; color: var(--accent); font-size: clamp(1rem, 3.2vw, 1.25rem);
     padding: 0.4rem; border-radius: var(--radius); cursor: pointer;
   }
-  .calendar-month.header-cursor { background: var(--accent); color: var(--bg); }
+  .calendar-month.header-cursor { background: var(--accent); color: var(--on-accent); }
   .calendar-weekdays {
     display: grid; grid-template-columns: repeat(7, 1fr); text-align: center;
     color: var(--accent); font-size: clamp(0.7rem, 2vw, 0.85rem); margin-bottom: 0.25rem;
@@ -232,8 +290,9 @@
   }
   .calendar-cell.empty { cursor: default; }
   .calendar-cell:not(.empty):hover { background: color-mix(in srgb, var(--primary) 15%, transparent); }
-  .calendar-cell.cursor { background: var(--accent); color: var(--bg); font-weight: 700; }
+  .calendar-cell.cursor { background: var(--accent); color: var(--on-accent); font-weight: 700; }
   .calendar-cell.holiday { color: var(--holiday); font-weight: 700; }
+  .calendar-cell.task { color: var(--task); font-weight: 700; }
   .calendar-cell.has-event { color: var(--primary); font-weight: 700; }
   .calendar-cell.today { color: var(--accent); font-weight: 700; }
 
@@ -357,6 +416,7 @@
         <li class="option-item" data-range="week" tabindex="0">This week</li>
         <li class="option-item" data-range="month" tabindex="0">This month</li>
         <li class="option-item" data-holidays tabindex="0">Holidays only</li>
+        <li class="option-item" data-tasks-only tabindex="0">Tasks only</li>
       </ul>
       <div class="filter-pick-row">
         <label for="filter-pick-month">Pick month</label>
@@ -378,36 +438,54 @@
     <div class="box form-box">
       <h2 id="form-title">New Event</h2>
       <form id="event-form">
+        <div id="form-kind-row" class="hidden">
+          <label class="form-label" for="form-kind">Save as</label>
+          <select id="form-kind">
+            <option value="event">Event</option>
+            <option value="task">Task</option>
+          </select>
+        </div>
+
         <label class="form-label" for="form-summary">Summary</label>
         <input type="text" id="form-summary" required>
 
         <label class="form-label" for="form-description">Description</label>
         <textarea id="form-description" rows="2"></textarea>
 
-        <label class="form-label" for="form-location">Location</label>
-        <input type="text" id="form-location">
+        <div id="form-event-fields">
+          <label class="form-label" for="form-location">Location</label>
+          <input type="text" id="form-location">
 
-        <label class="form-checkbox-row" for="form-all-day">
-          <input type="checkbox" id="form-all-day">
-          <span>All day</span>
-        </label>
+          <label class="form-checkbox-row" for="form-all-day">
+            <input type="checkbox" id="form-all-day">
+            <span>All day</span>
+          </label>
 
-        <div id="form-timed-fields">
-          <label class="form-label" for="form-start-datetime">Start</label>
-          <input type="datetime-local" id="form-start-datetime">
-          <label class="form-label" for="form-end-datetime">End</label>
-          <input type="datetime-local" id="form-end-datetime">
+          <div id="form-timed-fields">
+            <label class="form-label" for="form-start-datetime">Start</label>
+            <input type="datetime-local" id="form-start-datetime">
+            <label class="form-label" for="form-end-datetime">End</label>
+            <input type="datetime-local" id="form-end-datetime">
+          </div>
+
+          <div id="form-allday-fields" class="hidden">
+            <label class="form-label" for="form-start-date">Date</label>
+            <input type="date" id="form-start-date">
+          </div>
+
+          <label class="form-label" for="form-recurrence">Recurrence (RRULE, optional — e.g. FREQ=WEEKLY;COUNT=4)</label>
+          <input type="text" id="form-recurrence" placeholder="FREQ=WEEKLY;COUNT=4">
         </div>
 
-        <div id="form-allday-fields" class="hidden">
-          <label class="form-label" for="form-start-date">Start date</label>
-          <input type="date" id="form-start-date">
-          <label class="form-label" for="form-end-date">End date (optional — defaults to the next day)</label>
-          <input type="date" id="form-end-date">
-        </div>
+        <div id="form-task-fields" class="hidden">
+          <label class="form-label" for="form-due">Due date</label>
+          <input type="date" id="form-due">
 
-        <label class="form-label" for="form-recurrence">Recurrence (RRULE, optional — e.g. FREQ=WEEKLY;COUNT=4)</label>
-        <input type="text" id="form-recurrence" placeholder="FREQ=WEEKLY;COUNT=4">
+          <label class="form-checkbox-row hidden" id="form-completed-row" for="form-completed">
+            <input type="checkbox" id="form-completed">
+            <span>Completed</span>
+          </label>
+        </div>
 
         <div class="form-actions">
           <button type="button" class="btn btn-ghost" id="form-cancel-btn">Cancel</button>
@@ -622,6 +700,26 @@
     return apiFetch(`/events/${encodeURIComponent(id)}`, { method: "DELETE" });
   }
 
+  function apiCreateTask(payload) {
+    return apiFetch("/tasks", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then((res) => res.json());
+  }
+
+  function apiUpdateTask(id, payload) {
+    return apiFetch(`/tasks/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then((res) => res.json());
+  }
+
+  function apiDeleteTask(id) {
+    return apiFetch(`/tasks/${encodeURIComponent(id)}`, { method: "DELETE" });
+  }
+
   async function fetchEvents(params) {
     const qs = new URLSearchParams();
     if (params) {
@@ -659,6 +757,12 @@
     { id: "gruvbox-dark", label: "Gruvbox Dark" },
     { id: "catppuccin-mocha", label: "Catppuccin Mocha" },
     { id: "solarized-dark", label: "Solarized Dark" },
+    { id: "hacker-green", label: "Hacker Green" },
+    { id: "purple-haze", label: "Purple Haze" },
+    { id: "soft-pink", label: "Soft Pink" },
+    { id: "github-dark", label: "GitHub Dark" },
+    { id: "contrast-black", label: "Contrast Black" },
+    { id: "contrast-cream", label: "Contrast Cream" },
   ];
 
   function loadPref(key, fallback) {
@@ -681,6 +785,7 @@
     detailEvent: null,
     editingEvent: null,
     pendingPayload: null,
+    pendingKind: null,
   };
 
   document.documentElement.dataset.theme = state.theme;
@@ -772,8 +877,17 @@
   function buildAgendaRow(event, highlighted) {
     const row = el("div", "agenda-row" + (highlighted ? " selected" : ""));
     const isHoliday = !!event.is_holiday;
-    row.appendChild(el("span", "marker" + (isHoliday ? " holiday" : ""), highlighted ? "›" : "●"));
-    row.appendChild(el("span", "time-label", isHoliday ? "holiday" : agendaTimeLabel(event.start, event.all_day)));
+    const isTask = !!event.is_task;
+    const markerClass = isHoliday ? " holiday" : isTask ? " task" : "";
+    // A completed task keeps the "task" label — the strikethrough goes on the label word
+    // itself, not the summary, which stays fully readable either way.
+    const isDoneTask = isTask && event.status === "completed";
+    let timeLabel;
+    if (isHoliday) timeLabel = "holiday";
+    else if (isTask) timeLabel = "task";
+    else timeLabel = agendaTimeLabel(event.start, event.all_day);
+    row.appendChild(el("span", "marker" + markerClass, highlighted ? "›" : "●"));
+    row.appendChild(el("span", "time-label" + (isDoneTask ? " done" : ""), timeLabel));
     row.appendChild(el("span", "summary", event.summary || "(no summary)"));
     return row;
   }
@@ -855,16 +969,48 @@
 
   // ---- Event detail ----
 
-  const DETAIL_FIELDS = [
-    ["Description", "description"], ["Location", "location"], ["Start", "start"],
-    ["End", "end"], ["All day", "all_day"], ["Status", "status"],
+  // Per-type field lists — a task never has a location and is always an instant (its "end" is
+  // always identical to its "start", see app/agenda_service.py's _task_as_event), so it gets
+  // one relabeled "Due date" row instead of separate Start/End/All day rows; a holiday is
+  // always all-day, always "confirmed", and never has a location, so those add nothing worth
+  // showing.
+  const TASK_DETAIL_FIELDS = [
+    ["Description", "description"], ["Due date", "end"], ["Status", "status"],
   ];
+  const HOLIDAY_DETAIL_FIELDS = [
+    ["Description", "description"], ["Date", "start"],
+  ];
+
+  // No separate "All day" row at all — an all-day event is already unambiguous from
+  // showing one renamed "Date" row and no End; a timed event is already unambiguous from
+  // showing both Start and End. The boolean would only ever repeat information the other
+  // rows already convey.
+  function eventDetailFields(event) {
+    if (event.all_day) {
+      return [
+        ["Description", "description"], ["Location", "location"],
+        ["Date", "start"], ["Status", "status"],
+      ];
+    }
+    return [
+      ["Description", "description"], ["Location", "location"],
+      ["Start", "start"], ["End", "end"], ["Status", "status"],
+    ];
+  }
+
+  function detailFieldsFor(event) {
+    if (event.is_holiday) return HOLIDAY_DETAIL_FIELDS;
+    if (event.is_task) return TASK_DETAIL_FIELDS;
+    return eventDetailFields(event);
+  }
 
   function detailValue(event, field) {
     const value = event[field];
     if (value === null || value === undefined || value === "") return "—";
     if (field === "start" || field === "end") return formatDateTimeFull(value, event.all_day);
-    if (field === "all_day") return value ? "yes" : "no";
+    // "needsAction" is Google Tasks' own internal status name — "pending" reads far more
+    // clearly in a UI than API jargon a user never typed themselves.
+    if (field === "status" && value === "needsAction") return "pending";
     return String(value);
   }
 
@@ -876,7 +1022,7 @@
     if (event.is_holiday) {
       box.appendChild(el("div", "detail-holiday-badge", "Holiday — read-only, from Google's public calendar"));
     }
-    DETAIL_FIELDS.forEach(([label, field]) => {
+    detailFieldsFor(event).forEach(([label, field]) => {
       const row = el("div", "detail-field");
       row.appendChild(el("span", "detail-field-label", label + ": "));
       row.appendChild(el("span", "detail-field-value", detailValue(event, field)));
@@ -909,33 +1055,64 @@
     document.getElementById("form-allday-fields").classList.toggle("hidden", !allDay);
   }
 
+  // Location/all-day toggle/timed-vs-allday fields/recurrence don't exist on TaskInput at
+  // all (see app/task_schemas.py) — hidden rather than shown-and-ignored when "Task" is
+  // picked, mirroring the TUI's EventFormScreen._apply_task_visibility.
+  function applyKindVisibility(isTask) {
+    document.getElementById("form-event-fields").classList.toggle("hidden", isTask);
+    document.getElementById("form-task-fields").classList.toggle("hidden", !isTask);
+  }
+
+  // Kind is only ever chosen at create time (the "Save as" select); once an item exists,
+  // its kind is fixed — Google has no "convert a task into an event" operation — so editing
+  // reads is_task straight off the item being edited instead.
+  function currentFormKind() {
+    if (state.editingEvent) return state.editingEvent.is_task ? "task" : "event";
+    return document.getElementById("form-kind").value;
+  }
+
   function openEventForm(event) {
     state.editingEvent = event || null;
-    document.getElementById("form-title").textContent = event ? "Edit Event" : "New Event";
+    const creating = !event;
+    const isTask = event ? !!event.is_task : false;
+    document.getElementById("form-title").textContent = creating ? "New Event" : (isTask ? "Edit Task" : "Edit Event");
     const form = document.getElementById("event-form");
     form.reset();
+    document.getElementById("form-kind-row").classList.toggle("hidden", !creating);
+    document.getElementById("form-kind").value = "event";
+    document.getElementById("form-completed-row").classList.toggle("hidden", !isTask);
+    applyKindVisibility(isTask);
     const allDay = event ? !!event.all_day : false;
     document.getElementById("form-all-day").checked = allDay;
     toggleAllDayFields(allDay);
     if (event) {
       document.getElementById("form-summary").value = event.summary || "";
       document.getElementById("form-description").value = event.description || "";
-      document.getElementById("form-location").value = event.location || "";
-      if (allDay) {
-        document.getElementById("form-start-date").value = dayKey(event.start);
-        document.getElementById("form-end-date").value = dayKey(event.end);
+      if (isTask) {
+        document.getElementById("form-due").value = dayKey(event.start);
+        document.getElementById("form-completed").checked = event.status === "completed";
       } else {
-        document.getElementById("form-start-datetime").value = stripOffset(event.start).slice(0, 16);
-        document.getElementById("form-end-datetime").value = stripOffset(event.end).slice(0, 16);
+        document.getElementById("form-location").value = event.location || "";
+        if (allDay) {
+          document.getElementById("form-start-date").value = dayKey(event.start);
+        } else {
+          document.getElementById("form-start-datetime").value = stripOffset(event.start).slice(0, 16);
+          document.getElementById("form-end-datetime").value = stripOffset(event.end).slice(0, 16);
+        }
+        const recurrence = (event.recurrence && event.recurrence[0]) || "";
+        document.getElementById("form-recurrence").value = recurrence.includes(":") ? recurrence.split(":")[1] : recurrence;
       }
-      const recurrence = (event.recurrence && event.recurrence[0]) || "";
-      document.getElementById("form-recurrence").value = recurrence.includes(":") ? recurrence.split(":")[1] : recurrence;
     }
     openOverlay("form-overlay");
-    document.getElementById("form-summary").focus();
+    // Creating: the very first decision is "event or task", so that's what gets focus, not a
+    // field further down the form. Editing: there's no kind selector at all (kind is fixed),
+    // so Summary is still the sensible first stop.
+    document.getElementById(creating ? "form-kind" : "form-summary").focus();
   }
 
-  function collectFormPayload() {
+  document.getElementById("form-kind").addEventListener("change", (e) => applyKindVisibility(e.target.value === "task"));
+
+  function collectEventPayload() {
     const allDay = document.getElementById("form-all-day").checked;
     const payload = {
       summary: document.getElementById("form-summary").value.trim(),
@@ -944,9 +1121,10 @@
       timezone: state.timezone,
     };
     if (allDay) {
+      // No end-date input for all-day events — EventInput already defaults end to
+      // start + 1 day (a single day) when omitted, which covers the vast majority of
+      // all-day events without asking the user about Google's exclusive-end convention.
       payload.start = document.getElementById("form-start-date").value;
-      const end = document.getElementById("form-end-date").value;
-      if (end) payload.end = end;
     } else {
       payload.start = document.getElementById("form-start-datetime").value;
       const end = document.getElementById("form-end-datetime").value;
@@ -957,12 +1135,26 @@
     return payload;
   }
 
+  function collectTaskPayload() {
+    const payload = {
+      title: document.getElementById("form-summary").value.trim(),
+      due: document.getElementById("form-due").value,
+    };
+    const notes = document.getElementById("form-description").value.trim();
+    if (notes) payload.notes = notes;
+    if (state.editingEvent) payload.completed = document.getElementById("form-completed").checked;
+    return payload;
+  }
+
   document.getElementById("event-form").addEventListener("submit", (e) => {
     e.preventDefault();
-    const payload = collectFormPayload();
-    if (!payload.summary) { notify("Summary is required."); return; }
-    if (!payload.start) { notify("Start is required."); return; }
-    openReview(payload);
+    const kind = currentFormKind();
+    const payload = kind === "task" ? collectTaskPayload() : collectEventPayload();
+    const summaryValue = kind === "task" ? payload.title : payload.summary;
+    const dateValue = kind === "task" ? payload.due : payload.start;
+    if (!summaryValue) { notify(kind === "task" ? "Title is required." : "Summary is required."); return; }
+    if (!dateValue) { notify(kind === "task" ? "Due date is required." : "Start is required."); return; }
+    openReview(payload, kind);
   });
 
   function cancelEventForm() {
@@ -975,17 +1167,27 @@
   document.getElementById("form-cancel-btn").addEventListener("click", cancelEventForm);
   document.getElementById("form-all-day").addEventListener("change", (e) => toggleAllDayFields(e.target.checked));
 
-  function openReview(payload) {
+  function openReview(payload, kind) {
     state.pendingPayload = payload;
-    document.getElementById("review-title").textContent = state.editingEvent ? "Update event" : "Create event";
+    state.pendingKind = kind;
+    const noun = kind === "task" ? "task" : "event";
+    document.getElementById("review-title").textContent = (state.editingEvent ? "Update " : "Create ") + noun;
     const body = document.getElementById("review-body");
     body.innerHTML = "";
-    const lines = [["Summary", payload.summary]];
-    if (payload.description) lines.push(["Description", payload.description]);
-    if (payload.location) lines.push(["Location", payload.location]);
-    lines.push(["Start", payload.start]);
-    if (payload.end) lines.push(["End", payload.end]);
-    if (payload.recurrence) lines.push(["Recurrence", payload.recurrence[0]]);
+    let lines;
+    if (kind === "task") {
+      lines = [["Title", payload.title]];
+      if (payload.notes) lines.push(["Notes", payload.notes]);
+      lines.push(["Due", payload.due]);
+      if ("completed" in payload) lines.push(["Completed", payload.completed ? "yes" : "no"]);
+    } else {
+      lines = [["Summary", payload.summary]];
+      if (payload.description) lines.push(["Description", payload.description]);
+      if (payload.location) lines.push(["Location", payload.location]);
+      lines.push(["Start", payload.start]);
+      if (payload.end) lines.push(["End", payload.end]);
+      if (payload.recurrence) lines.push(["Recurrence", payload.recurrence[0]]);
+    }
     lines.forEach(([label, value]) => {
       const row = el("div", "detail-field");
       row.appendChild(el("span", "detail-field-label", label + ": "));
@@ -1003,10 +1205,16 @@
 
   document.getElementById("review-confirm-btn").addEventListener("click", async () => {
     const payload = state.pendingPayload;
+    const kind = state.pendingKind;
     const editing = state.editingEvent;
     try {
-      if (editing) await apiUpdateEvent(editing.id, payload);
-      else await apiCreateEvent(payload);
+      if (kind === "task") {
+        if (editing) await apiUpdateTask(editing.id, payload);
+        else await apiCreateTask(payload);
+      } else {
+        if (editing) await apiUpdateEvent(editing.id, payload);
+        else await apiCreateEvent(payload);
+      }
     } catch (e) {
       if (e.unauthorized) { showLoginScreen("Your session expired. Log in again."); return; }
       notify(e.message);
@@ -1014,6 +1222,7 @@
     }
     closeOverlay();
     state.pendingPayload = null;
+    state.pendingKind = null;
     state.editingEvent = null;
     actionRefresh();
   });
@@ -1047,7 +1256,8 @@
 
   async function performDelete(event) {
     try {
-      await apiDeleteEvent(event.id);
+      if (event.is_task) await apiDeleteTask(event.id);
+      else await apiDeleteEvent(event.id);
     } catch (e) {
       if (e.unauthorized) { showLoginScreen("Your session expired. Log in again."); return; }
       notify(e.message);
@@ -1184,6 +1394,7 @@
     if (!item) return;
     if (item.dataset.range) applyFilter({ range: item.dataset.range }, item.textContent);
     else if (item.hasAttribute("data-holidays")) applyFilter({ only_holidays: "true" }, "Holidays only");
+    else if (item.hasAttribute("data-tasks-only")) applyFilter({ only_tasks: "true" }, "Tasks only");
   });
 
   document.getElementById("filter-pick-month").addEventListener("change", (e) => {
@@ -1222,7 +1433,7 @@
       year: today.year, month: today.month,
       cursorMode: "grid", cursorRow: 0, cursorCol: 0,
       weeks: buildWeeks(today.year, today.month),
-      eventDays: new Set(), holidayDays: new Set(),
+      eventDays: new Set(), holidayDays: new Set(), taskDays: new Set(),
     };
     for (let r = 0; r < cal.weeks.length; r++) {
       const c = cal.weeks[r].indexOf(today.day);
@@ -1238,6 +1449,7 @@
     const bounds = monthBounds(cal.year, cal.month, state.timezone);
     cal.eventDays = new Set();
     cal.holidayDays = new Set();
+    cal.taskDays = new Set();
     try {
       const events = await fetchEvents(bounds);
       const monthPrefix = `${cal.year}-${String(cal.month).padStart(2, "0")}`;
@@ -1245,7 +1457,8 @@
         const dayStr = dayKey(ev.start);
         if (dayStr.slice(0, 7) !== monthPrefix) return;
         const day = Number(dayStr.slice(8, 10));
-        (ev.is_holiday ? cal.holidayDays : cal.eventDays).add(day);
+        const bucket = ev.is_holiday ? cal.holidayDays : ev.is_task ? cal.taskDays : cal.eventDays;
+        bucket.add(day);
       });
     } catch (e) {
       if (e.unauthorized) { showLoginScreen("Your session expired. Log in again."); return; }
@@ -1277,6 +1490,7 @@
         const isToday = day === cal.todayDay && cal.year === cal.todayYear && cal.month === cal.todayMonth;
         if (isCursor) cell.classList.add("cursor");
         else if (cal.holidayDays.has(day)) cell.classList.add("holiday");
+        else if (cal.taskDays.has(day)) cell.classList.add("task");
         else if (cal.eventDays.has(day)) cell.classList.add("has-event");
         else if (isToday) cell.classList.add("today");
         cell.addEventListener("click", () => {

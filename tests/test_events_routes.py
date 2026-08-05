@@ -3,11 +3,23 @@ from fastapi.testclient import TestClient
 
 from app.calendar_service import CalendarService, get_calendar_service
 from app.main import app
-from tests.conftest import FakeGoogleClient, raw_timed_event
+from app.task_service import TaskService, get_task_service
+from tests.conftest import FakeGoogleClient, FakeTasksClient, raw_task, raw_timed_event
+
+
+class _NoTasksService:
+    """Stand-in for TaskService in tests that only care about calendar/holiday
+    behavior — GET /events now merges in tasks via AgendaService, so every route
+    test needs *some* task_service override or it falls through to the real
+    (unauthenticated-in-tests) dependency chain and 401s."""
+
+    def list_tasks(self, **kwargs):
+        return []
 
 
 def _client_with_fake_google(fake_google_client: FakeGoogleClient) -> TestClient:
     app.dependency_overrides[get_calendar_service] = lambda: CalendarService(fake_google_client)
+    app.dependency_overrides[get_task_service] = lambda: _NoTasksService()
     return TestClient(app)
 
 
@@ -25,6 +37,46 @@ def test_list_events_route_returns_normalized_events():
 
     assert response.status_code == 200
     assert response.json()[0]["summary"] == "Routed"
+
+
+def test_list_events_route_merges_in_tasks():
+    fake_google = FakeGoogleClient()
+    fake_google.queue("list", result={"items": [raw_timed_event(summary="An event")]})
+    fake_google.queue("list", result={"items": []})  # holiday calendar
+    fake_tasks = FakeTasksClient()
+    fake_tasks.queue("list", result={"items": [raw_task(title="A task")]})
+    app.dependency_overrides[get_calendar_service] = lambda: CalendarService(fake_google)
+    app.dependency_overrides[get_task_service] = lambda: TaskService(fake_tasks)
+    client = TestClient(app)
+
+    response = client.get("/events")
+
+    assert response.status_code == 200
+    by_summary = {e["summary"]: e["is_task"] for e in response.json()}
+    assert by_summary == {"An event": False, "A task": True}
+
+
+def test_list_events_route_only_tasks_skips_calendar_entirely():
+    fake_google = FakeGoogleClient()  # nothing queued — must never be called
+    fake_tasks = FakeTasksClient()
+    fake_tasks.queue("list", result={"items": [raw_task(title="Only this")]})
+    app.dependency_overrides[get_calendar_service] = lambda: CalendarService(fake_google)
+    app.dependency_overrides[get_task_service] = lambda: TaskService(fake_tasks)
+    client = TestClient(app)
+
+    response = client.get("/events", params={"only_tasks": "true"})
+
+    assert response.status_code == 200
+    assert [e["summary"] for e in response.json()] == ["Only this"]
+    assert fake_google.calls == []
+
+
+def test_list_events_route_rejects_only_holidays_with_only_tasks():
+    client = _client_with_fake_google(FakeGoogleClient())
+
+    response = client.get("/events", params={"only_holidays": "true", "only_tasks": "true"})
+
+    assert response.status_code == 400
 
 
 def test_list_events_route_range_today_reaches_google_with_time_bounds():

@@ -14,7 +14,7 @@ from textual.containers import Center, Middle, Vertical, VerticalScroll
 from textual.geometry import Region
 from textual.reactive import reactive
 from textual.screen import Screen
-from textual.widgets import DataTable, Footer, Input, Label, OptionList, Static
+from textual.widgets import Checkbox, DataTable, Footer, Input, Label, OptionList, Select, Static
 from textual.widgets.option_list import Option
 
 from . import api, config, oauth_login
@@ -105,9 +105,14 @@ _AGENDA_CURSOR = "[$accent]>[/]"
 # app/calendar_service.py's HOLIDAY_CALENDAR_ID) get a fixed color instead of
 # the theme's primary/accent, so they read as "not one of your own events"
 # consistently across every theme rather than blending in with the rest of
-# the agenda.
-_HOLIDAY_BULLET = "[#ff6a00]●[/]"
-_HOLIDAY_CURSOR = "[#ff6a00]>[/]"
+# the agenda. Neon green — same hex the web client's --holiday uses.
+_HOLIDAY_BULLET = "[#39ff14]●[/]"
+_HOLIDAY_CURSOR = "[#39ff14]>[/]"
+# Tasks (merged in from Google Tasks, see app/agenda_service.py) get the
+# orange holidays used to have — reused as-is, not a new shade, same as the
+# web client's --task.
+_TASK_BULLET = "[#ff6a00]●[/]"
+_TASK_CURSOR = "[#ff6a00]>[/]"
 
 _REPO_URL = "https://github.com/xyz-leo/calendar-api"
 
@@ -479,13 +484,24 @@ class EventListScreen(Screen):
 
     def _agenda_label(self, event: dict, *, highlighted: bool) -> str:
         is_holiday = event.get("is_holiday", False)
+        is_task = event.get("is_task", False)
         if is_holiday:
             marker = _HOLIDAY_CURSOR if highlighted else _HOLIDAY_BULLET
             time_label = "holiday"
+        elif is_task:
+            marker = _TASK_CURSOR if highlighted else _TASK_BULLET
+            time_label = "task"
         else:
             marker = _AGENDA_CURSOR if highlighted else _AGENDA_BULLET
             time_label = _agenda_time_label(event["start"], event.get("all_day", False))
-        return f"  {marker} {time_label:<9} {event['summary']}"
+        if is_task and event.get("status") == "completed":
+            # Strike only the visible word, then pad with plain spaces *after* the closing
+            # tag — padding inside the markup draws the strikethrough line across the blank
+            # padding too, stretching it across the whole column instead of just the word.
+            label = f"[strike]{time_label}[/]{' ' * (9 - len(time_label))}"
+        else:
+            label = f"{time_label:<9}"
+        return f"  {marker} {label} {event['summary']}"
 
     def _render_agenda(self) -> None:
         # Alternate presentation of the exact same data as the table — grouped
@@ -757,16 +773,49 @@ class AboutScreen(Screen):
         webbrowser.open(_REPO_URL)
 
 
-_DETAIL_FIELDS = [
-    ("Summary", "summary"),
+# Per-type field lists — Summary is always shown separately as the screen's own title, so
+# none of these repeat it. A task never has a location and is always an instant (its "end" is
+# always identical to its "start" — see app/agenda_service.py's _task_as_event), so it gets one
+# relabeled "Due date" row instead of separate Start/End/All day rows; a holiday is always
+# all-day, always "confirmed", and never has a location, so those add nothing worth showing.
+def _event_detail_fields(event: dict) -> list[tuple[str, str]]:
+    # No separate "All day" row at all — an all-day event is already unambiguous from
+    # showing one renamed "Date" row and no End; a timed event is already unambiguous
+    # from showing both Start and End. The boolean would only ever repeat information
+    # the other rows already convey.
+    if event.get("all_day"):
+        return [
+            ("Description", "description"),
+            ("Location", "location"),
+            ("Date", "start"),
+            ("Status", "status"),
+        ]
+    return [
+        ("Description", "description"),
+        ("Location", "location"),
+        ("Start", "start"),
+        ("End", "end"),
+        ("Status", "status"),
+    ]
+
+
+_TASK_DETAIL_FIELDS = [
     ("Description", "description"),
-    ("Location", "location"),
-    ("Start", "start"),
-    ("End", "end"),
-    ("All day", "all_day"),
+    ("Due date", "end"),
     ("Status", "status"),
-    ("ID", "id"),
 ]
+_HOLIDAY_DETAIL_FIELDS = [
+    ("Description", "description"),
+    ("Date", "start"),
+]
+
+
+def _detail_fields_for(event: dict) -> list[tuple[str, str]]:
+    if event.get("is_holiday", False):
+        return _HOLIDAY_DETAIL_FIELDS
+    if event.get("is_task", False):
+        return _TASK_DETAIL_FIELDS
+    return _event_detail_fields(event)
 
 
 _DATETIME_FIELDS = {"start", "end"}
@@ -778,6 +827,10 @@ def _detail_value(event: dict, field: str) -> str:
         return "—"
     if field in _DATETIME_FIELDS:
         return _format_datetime(value, event.get("all_day", False))
+    # "needsAction" is Google Tasks' own internal status name — "pending" reads far more
+    # clearly in a UI than API jargon a user never typed themselves.
+    if field == "status" and value == "needsAction":
+        return "pending"
     return str(value)
 
 
@@ -799,7 +852,7 @@ class EventDetailScreen(Screen):
     def compose(self) -> ComposeResult:
         with VerticalScroll(id="detail-box"):
             yield Label(self.event.get("summary") or "(no summary)", id="detail-title")
-            for label, field in _DETAIL_FIELDS[1:]:
+            for label, field in _detail_fields_for(self.event):
                 yield Label(
                     f"{label}: {_detail_value(self.event, field)}",
                     classes="detail-field",
@@ -837,8 +890,13 @@ class EventDetailScreen(Screen):
 
     def _perform_delete(self) -> None:
         cfg = config.load()
+        server = config.api_server(cfg)
+        token = config.token(cfg)
         try:
-            api.delete_event(config.api_server(cfg), config.token(cfg), self.event["id"])
+            if self.event.get("is_task", False):
+                api.delete_task(server, token, self.event["id"])
+            else:
+                api.delete_event(server, token, self.event["id"])
         except api.ApiError as e:
             self.notify(str(e), severity="error")
             return
@@ -889,9 +947,18 @@ _FORM_FIELDS = [
     ("Recurrence (RRULE, optional, e.g. FREQ=WEEKLY;COUNT=4)", "recurrence", ""),
 ]
 
+# Fields that don't exist on TaskInput at all (no location, no start/end, no
+# recurrence — see app/task_schemas.py) — hidden rather than shown-and-ignored
+# when "Task" is picked, since they'd otherwise misleadingly suggest a task
+# can have them. A task's one and only date is its own dedicated "Due date"
+# field below (#form-due), not a relabeled Start — Google Tasks has no
+# "start date" concept at all, only a due date (what its own app calls
+# "deadline"), so reusing Event's start/end fields for it was misleading.
+_TASK_HIDDEN_FIELDS = ("location", "start", "end", "recurrence")
+
 
 class EventFormScreen(Screen):
-    """Create (event=None) or edit (event=<existing>) an event. `ctrl+s`
+    """Create (event=None) or edit (event=<existing>) an event or task. `ctrl+s`
     reviews the entered values via ConfirmScreen before actually saving."""
 
     BINDINGS = [("escape", "cancel", "Cancel"), ("ctrl+s", "review", "Review")]
@@ -900,13 +967,33 @@ class EventFormScreen(Screen):
         super().__init__()
         self.event = event
         self.on_saved = on_saved
+        # Once an item exists, its kind is fixed — Google has no "convert a
+        # task into an event" operation, so this is only ever chosen at
+        # create time (see the Select below).
+        self._is_task = bool(event.get("is_task", False)) if event is not None else False
 
     def compose(self) -> ComposeResult:
+        creating = self.event is None
+        title = "New Event" if creating else ("Edit Task" if self._is_task else "Edit Event")
         with VerticalScroll(id="form-box"):
-            yield Label("New Event" if self.event is None else "Edit Event", id="form-title")
+            yield Label(title, id="form-title")
+            if creating:
+                yield Label("Save as", classes="form-label")
+                yield Select(
+                    [("Event", "event"), ("Task", "task")],
+                    value="event",
+                    allow_blank=False,
+                    id="form-kind",
+                )
             for label, field, default in _FORM_FIELDS:
-                yield Label(label, classes="form-label")
+                yield Label(label, classes="form-label", id=f"form-{field}-label")
                 yield Input(value=self._prefill(field, default), id=f"form-{field}")
+            yield Label("Due date (YYYY-MM-DD)", classes="form-label", id="form-due-label")
+            yield Input(value=self._prefill_due(), id="form-due")
+            if not creating and self._is_task:
+                yield Checkbox(
+                    "Completed", value=self.event.get("status") == "completed", id="form-completed"
+                )
         yield _footer()
 
     def _prefill(self, field: str, default: str) -> str:
@@ -922,15 +1009,42 @@ class EventFormScreen(Screen):
             value = self.event.get(field)
             if not value:
                 return default
-            # All-day events store a full "date + T00:00:00" timestamp — trim
+            # All-day events (and every task — see app/agenda_service.py's
+            # _task_as_event) store a full "date + T00:00:00" timestamp — trim
             # back to just the date, otherwise resubmitting unchanged would
             # silently turn it into a timed event (a full timestamp always
             # means "timed" to EventInput, a bare date always means "all-day").
             return value[:10] if self.event.get("all_day") else value
         return self.event.get(field) or default
 
+    def _prefill_due(self) -> str:
+        if self.event is None or not self._is_task:
+            return ""
+        # A task's start and end are always identical (see app/agenda_service.py's
+        # _task_as_event) — either one carries the real due date.
+        value = self.event.get("end")
+        return value[:10] if value else ""
+
     def on_mount(self) -> None:
-        self.query_one("#form-summary", Input).focus()
+        # Creating: the very first decision is "event or task", so that's what should have
+        # focus, not a field further down the form. Editing: there's no Select at all (kind is
+        # fixed), so Summary is still the sensible first stop.
+        if self.event is None:
+            self.query_one("#form-kind", Select).focus()
+        else:
+            self.query_one("#form-summary", Input).focus()
+        self._apply_task_visibility(self._is_task)
+
+    def on_select_changed(self, event: Select.Changed) -> None:
+        if event.select.id == "form-kind":
+            self._apply_task_visibility(event.value == "task")
+
+    def _apply_task_visibility(self, is_task: bool) -> None:
+        for field in _TASK_HIDDEN_FIELDS:
+            self.query_one(f"#form-{field}", Input).display = not is_task
+            self.query_one(f"#form-{field}-label", Label).display = not is_task
+        self.query_one("#form-due", Input).display = is_task
+        self.query_one("#form-due-label", Label).display = is_task
 
     def action_cancel(self) -> None:
         self.app.pop_screen()
@@ -938,7 +1052,12 @@ class EventFormScreen(Screen):
     def _value(self, field: str) -> str:
         return self.query_one(f"#form-{field}", Input).value.strip()
 
-    def _collect_payload(self) -> dict:
+    def _current_kind(self) -> str:
+        if self.event is None:
+            return self.query_one("#form-kind", Select).value
+        return "task" if self._is_task else "event"
+
+    def _collect_event_payload(self) -> dict:
         payload = {
             "summary": self._value("summary"),
             "description": self._value("description"),
@@ -956,41 +1075,74 @@ class EventFormScreen(Screen):
             payload["recurrence"] = [recurrence]
         return payload
 
-    def action_review(self) -> None:
-        payload = self._collect_payload()
-        if not payload["summary"]:
-            self.notify("Summary is required.", severity="error")
-            return
-        if not payload["start"]:
-            self.notify("Start is required.", severity="error")
-            return
-        self.app.push_screen(ConfirmScreen(self._format_resume(payload), on_confirm=lambda: self._save(payload)))
+    def _collect_task_payload(self) -> dict:
+        payload = {"title": self._value("summary"), "due": self._value("due")}
+        notes = self._value("description")
+        if notes:
+            payload["notes"] = notes
+        if self.event is not None:
+            payload["completed"] = self.query_one("#form-completed", Checkbox).value
+        return payload
 
-    def _format_resume(self, payload: dict) -> str:
+    def action_review(self) -> None:
+        kind = self._current_kind()
+        if kind == "task":
+            payload = self._collect_task_payload()
+            required_label, required_field = "Title", "title"
+            required_date_label, required_date_field = "Due date", "due"
+        else:
+            payload = self._collect_event_payload()
+            required_label, required_field = "Summary", "summary"
+            required_date_label, required_date_field = "Start", "start"
+        if not payload[required_field]:
+            self.notify(f"{required_label} is required.", severity="error")
+            return
+        if not payload[required_date_field]:
+            self.notify(f"{required_date_label} is required.", severity="error")
+            return
+        self.app.push_screen(
+            ConfirmScreen(self._format_resume(payload, kind), on_confirm=lambda: self._save(payload, kind))
+        )
+
+    def _format_resume(self, payload: dict, kind: str) -> str:
         verb = "Create" if self.event is None else "Update"
-        lines = [f"{verb} event:", "", f"Summary: {payload['summary']}"]
-        if payload.get("description"):
-            lines.append(f"Description: {payload['description']}")
-        if payload.get("location"):
-            lines.append(f"Location: {payload['location']}")
-        lines.append(f"Start: {payload['start']}")
-        if payload.get("end"):
-            lines.append(f"End: {payload['end']}")
-        if payload.get("recurrence"):
-            lines.append(f"Recurrence: {payload['recurrence'][0]}")
+        if kind == "task":
+            lines = [f"{verb} task:", "", f"Title: {payload['title']}"]
+            if payload.get("notes"):
+                lines.append(f"Notes: {payload['notes']}")
+            lines.append(f"Due: {payload['due']}")
+            if "completed" in payload:
+                lines.append(f"Completed: {'yes' if payload['completed'] else 'no'}")
+        else:
+            lines = [f"{verb} event:", "", f"Summary: {payload['summary']}"]
+            if payload.get("description"):
+                lines.append(f"Description: {payload['description']}")
+            if payload.get("location"):
+                lines.append(f"Location: {payload['location']}")
+            lines.append(f"Start: {payload['start']}")
+            if payload.get("end"):
+                lines.append(f"End: {payload['end']}")
+            if payload.get("recurrence"):
+                lines.append(f"Recurrence: {payload['recurrence'][0]}")
         lines.append("")
         lines.append("Type yes to confirm.")
         return "\n".join(lines)
 
-    def _save(self, payload: dict) -> None:
+    def _save(self, payload: dict, kind: str) -> None:
         cfg = config.load()
         server = config.api_server(cfg)
         token = config.token(cfg)
         try:
-            if self.event is None:
-                api.create_event(server, token, payload)
+            if kind == "task":
+                if self.event is None:
+                    api.create_task(server, token, payload)
+                else:
+                    api.update_task(server, token, self.event["id"], payload)
             else:
-                api.update_event(server, token, self.event["id"], payload)
+                if self.event is None:
+                    api.create_event(server, token, payload)
+                else:
+                    api.update_event(server, token, self.event["id"], payload)
         except api.ApiError as e:
             self.notify(str(e), severity="error")
             return
@@ -1106,6 +1258,7 @@ class FilterScreen(Screen):
         option_list = self.query_one(OptionList)
         options = [Option(label, id=f"range:{key}") for label, key in self._PRESETS]
         options.append(Option("Holidays only", id="holidays"))
+        options.append(Option("Tasks only", id="tasks"))
         options.append(Option("Pick month...", id="pick-month"))
         options.append(Option("Pick date...", id="pick-date"))
         if self.active_label is not None:
@@ -1126,6 +1279,9 @@ class FilterScreen(Screen):
             # holiday fetch to the current year (see calendar_service.list_events),
             # so "everything upcoming" here already means "this year's holidays".
             self.on_apply({"only_holidays": True}, "Holidays only")
+        elif option_id == "tasks":
+            self.app.pop_screen()
+            self.on_apply({"only_tasks": True}, "Tasks only")
         elif option_id.startswith("range:"):
             key = option_id.split(":", 1)[1]
             label = next(label for label, k in self._PRESETS if k == key)
@@ -1213,6 +1369,7 @@ class CalendarScreen(Screen):
         self._cursor_row, self._cursor_col = self._default_cursor()
         self._event_days: set[int] = set()
         self._holiday_days: set[int] = set()
+        self._task_days: set[int] = set()
 
     def compose(self) -> ComposeResult:
         with Center():
@@ -1259,6 +1416,7 @@ class CalendarScreen(Screen):
             events = []
         self._event_days = set()
         self._holiday_days = set()
+        self._task_days = set()
         month_prefix = f"{self._year:04d}-{self._month:02d}"
         for event in events:
             day_str = event["start"][:10]
@@ -1267,6 +1425,8 @@ class CalendarScreen(Screen):
             day = int(day_str[8:10])
             if event.get("is_holiday"):
                 self._holiday_days.add(day)
+            elif event.get("is_task"):
+                self._task_days.add(day)
             else:
                 self._event_days.add(day)
 
@@ -1295,6 +1455,8 @@ class CalendarScreen(Screen):
                 if is_cursor:
                     cells.append(f"[reverse]{text}[/]")
                 elif day in self._holiday_days:
+                    cells.append(f"[#39ff14]{text}[/]")
+                elif day in self._task_days:
                     cells.append(f"[#ff6a00]{text}[/]")
                 elif day in self._event_days:
                     cells.append(f"[$primary bold]{text}[/]")

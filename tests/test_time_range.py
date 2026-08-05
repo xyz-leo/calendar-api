@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from fastapi import HTTPException
 
-from app.events import _resolve_time_range
+from app.time_range import resolve_time_range as _resolve_time_range
 
 
 def test_default_is_upcoming_unbounded():

@@ -1,15 +1,18 @@
 from datetime import date, datetime, timezone
+from functools import partial
 
 from fastapi import Depends, HTTPException
 from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
 from app.database import get_db
+from app.google_api_errors import execute_google_request
 from app.google_oauth import get_user_credentials
 from app.models import User
 from app.schemas import Event, EventInput
+
+_execute = partial(execute_google_request, api_label="Google Calendar API")
 
 CALENDAR_ID = "primary"
 # Google's public Brazilian holiday calendar — read-only, merged into list_events
@@ -18,16 +21,8 @@ CALENDAR_ID = "primary"
 # updated, or deleted through this API, only ever listed.
 HOLIDAY_CALENDAR_ID = "en.brazilian#holiday@group.v.calendar.google.com"
 
-# Google's HttpError carries a real, meaningful status — pass the common ones
-# through as-is instead of letting every Google hiccup surface as a generic 500.
-_STATUS_DETAIL = {
-    404: "Event not found",
-    403: "Google denied this request (check the granted scope/permissions)",
-    401: "Google access expired or was revoked — log in with Google again",
-}
 
-
-def _sort_key(event: Event) -> datetime:
+def event_sort_key(event: Event) -> datetime:
     # Timed events normalize to timezone-aware datetimes (Google sends an
     # offset); all-day events (every holiday event, plus any all-day event on
     # the primary calendar) normalize to naive ones (see _normalize below) —
@@ -40,17 +35,6 @@ def _sort_key(event: Event) -> datetime:
     if start.tzinfo is not None:
         return start.astimezone(timezone.utc).replace(tzinfo=None)
     return start
-
-
-def _execute(request):
-    try:
-        return request.execute()
-    except HttpError as e:
-        status = e.resp.status
-        raise HTTPException(
-            status_code=status if status in _STATUS_DETAIL else 502,
-            detail=_STATUS_DETAIL.get(status, f"Google Calendar API error ({status})"),
-        )
 
 
 class CalendarService:
@@ -91,7 +75,7 @@ class CalendarService:
             # holidays" as "no holidays" — let it surface instead.
             if only_holidays:
                 raise
-        events.sort(key=_sort_key)
+        events.sort(key=event_sort_key)
         return events
 
     def _list_from_calendar(
@@ -113,7 +97,9 @@ class CalendarService:
         while True:
             if page_token:
                 params["pageToken"] = page_token
-            raw = _execute(self.google_client.events().list(**params))
+            raw = _execute(
+                self.google_client.events().list(**params), not_found_detail="Event not found"
+            )
             events.extend(self._normalize(e, is_holiday=is_holiday) for e in raw.get("items", []))
             page_token = raw.get("nextPageToken")
             if not page_token:
@@ -122,7 +108,8 @@ class CalendarService:
 
     def get_event(self, event_id: str) -> Event:
         raw = _execute(
-            self.google_client.events().get(calendarId=CALENDAR_ID, eventId=event_id)
+            self.google_client.events().get(calendarId=CALENDAR_ID, eventId=event_id),
+            not_found_detail="Event not found",
         )
         return self._normalize(raw)
 
@@ -136,13 +123,15 @@ class CalendarService:
     def update_event(self, event_id: str, event: EventInput) -> Event:
         raw = _execute(
             self.google_client.events()
-            .patch(calendarId=CALENDAR_ID, eventId=event_id, body=event.to_google_payload())
+            .patch(calendarId=CALENDAR_ID, eventId=event_id, body=event.to_google_payload()),
+            not_found_detail="Event not found",
         )
         return self._normalize(raw)
 
     def delete_event(self, event_id: str) -> None:
         _execute(
-            self.google_client.events().delete(calendarId=CALENDAR_ID, eventId=event_id)
+            self.google_client.events().delete(calendarId=CALENDAR_ID, eventId=event_id),
+            not_found_detail="Event not found",
         )
 
     def _normalize(self, raw: dict, *, is_holiday: bool = False) -> Event:

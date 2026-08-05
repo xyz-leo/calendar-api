@@ -45,5 +45,17 @@ def delete_event(api_server: str, token: str, event_id: str) -> None:
     _request("DELETE", api_server, token, f"/events/{event_id}", 204)
 
 
+def create_task(api_server: str, token: str, payload: dict) -> dict:
+    return _request("POST", api_server, token, "/tasks", 201, json=payload).json()
+
+
+def update_task(api_server: str, token: str, task_id: str, payload: dict) -> dict:
+    return _request("PATCH", api_server, token, f"/tasks/{task_id}", 200, json=payload).json()
+
+
+def delete_task(api_server: str, token: str, task_id: str) -> None:
+    _request("DELETE", api_server, token, f"/tasks/{task_id}", 204)
+
+
 def logout(api_server: str, token: str) -> None:
     _request("POST", api_server, token, "/auth/logout", 200)

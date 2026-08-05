@@ -38,6 +38,7 @@ to change either via `.env`.
 | `recurring_event_id` | string \| null | Set on an expanded occurrence; points to the series. |
 | `all_day` | boolean | |
 | `is_holiday` | boolean | `true` for events merged in from Google's public Brazilian holiday calendar (`GET /events` only — read-only, not creatable/editable/deletable through this API). |
+| `is_task` | boolean | `true` for items merged in from Google Tasks (`GET /events` only — see `docs/architecture.md`'s Google Tasks section). A task's `id` is a real Google Tasks id (no prefix/encoding) — it belongs to the `/tasks/*` routes below, not `/events/*`; a client edits/deletes it there, keyed off this flag. |
 
 ### `EventInput` (request body — `POST`/`PATCH /events`)
 
@@ -53,20 +54,45 @@ to change either via `.env`.
 
 Validation failures return `422` with a Pydantic-generated error body.
 
+### `Task` (response body)
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | string | Google Tasks' own id — a completely different id space than `Event.id`; only ever addressed via `/tasks/*`. |
+| `title` | string | |
+| `notes` | string \| null | |
+| `due` | date | Google Tasks has no time-of-day concept — always a bare date. |
+| `status` | string | `"needsAction"` or `"completed"`. |
+
+### `TaskInput` (request body — `POST`/`PATCH /tasks`)
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `title` | string | yes | |
+| `notes` | string \| null | no | Same omission semantics as `EventInput.description`. |
+| `due` | date | yes | Bare date only (e.g. `"2026-08-15"`) — a datetime is rejected with `422`, there's no time-of-day field to put it in. |
+| `completed` | boolean | no | Default `false`. Maps to Google's `status` (`"completed"` vs `"needsAction"`) — this is how a task is marked done. |
+
+Validation failures return `422`. No `recurrence`/`location`/`timezone` fields exist on this
+schema at all — Google Tasks doesn't support any of them, so there's nothing to validate against
+or silently ignore.
+
 ---
 
 ## `GET /events`
 
 List events. Auth required.
 
-**Query parameters** (all optional; `range` cannot be combined with `from`/`to` — `400` if it is):
+**Query parameters** (all optional; `range` cannot be combined with `from`/`to` — `400` if it is;
+`only_holidays` and `only_tasks` cannot be combined with each other — `400` if both are `true`):
 
 | Param | Type | Notes |
 |---|---|---|
 | `from` | date or datetime | Range start. Defaults to now if `to` is given without `from`. Naive values are assumed UTC. |
 | `to` | date or datetime | Range end. Unbounded if omitted. |
 | `range` | `today` \| `week` \| `month` | Convenience shortcut, always relative to the current time: `today` → end of today, `week` → +7 days, `month` → +30 days. |
-| `only_holidays` | boolean | Default `false`. When `true`, skips the primary calendar entirely and returns only the holiday calendar (still subject to `from`/`to`/`range` above). |
+| `only_holidays` | boolean | Default `false`. When `true`, skips the primary calendar and tasks entirely and returns only the holiday calendar (still subject to `from`/`to`/`range` above). |
+| `only_tasks` | boolean | Default `false`. When `true`, skips the primary calendar and holiday calendar entirely and returns only tasks (still subject to `from`/`to`/`range` above, applied as the tasks' `due` bounds). A fetch failure surfaces as an error here rather than being swallowed, same reasoning as `only_holidays`. |
 
 With no parameters: everything from now onward, unbounded.
 
@@ -80,6 +106,14 @@ public calendar (2029, 2030, ... it has no natural end); an explicit `to`/`range
 as given instead. A hiccup fetching the holiday calendar is swallowed rather than failing the whole
 request, *unless* `only_holidays` is set — there, a fetch failure is the one thing being asked for,
 so it surfaces as an error instead of a misleading empty list.
+
+Also includes items from Google Tasks merged in the same way (`is_task: true` on those, see
+`docs/architecture.md`'s Google Tasks section) *unless* `only_holidays` is set, in which case tasks
+are skipped entirely along with the primary calendar. A hiccup fetching tasks (including a session
+that hasn't re-logged-in since the `tasks` scope was added) is swallowed the same way a holiday
+fetch hiccup is — the rest of the agenda still comes back — *unless* `only_tasks` is set, in which
+case (mirroring `only_holidays`) a fetch failure is the one thing being asked for and surfaces as
+an error instead of a misleading empty list.
 
 ---
 
@@ -121,6 +155,61 @@ Delete an event. Auth required.
 **Response**: `204`, empty body. Note: Google retains a cancelled-status tombstone record
 internally; a subsequent `GET` on the same id may still return `200` with `"status": "cancelled"`
 rather than `404`, briefly.
+
+---
+
+## `GET /tasks`
+
+List tasks from the account's default task list. Auth required. A separate resource from
+`/events` — see `docs/architecture.md`'s Google Tasks section for why Tasks isn't just another
+`/events` variant.
+
+**Query parameters** (both optional): `from`, `to` — same date/datetime parsing and UTC-assumption
+rules as `GET /events`. No `range` shortcut (not needed for the one caller — `AgendaService` —
+that uses this internally with its own already-resolved bounds; a human caller can just pass
+`from`/`to` directly).
+
+**Response**: `200`, `list[Task]`, unsorted (Google's own list order). Tasks with no `due` date at
+all are skipped — see `docs/architecture.md`'s Known limitations. Completed tasks are excluded by
+default (Google's own `showCompleted=false` default), matching how Google's own Tasks UI hides
+them from the main list.
+
+---
+
+## `GET /tasks/{task_id}`
+
+Fetch one task. Auth required.
+
+**Response**: `200`, `Task`. `404` if the id doesn't exist in the default task list.
+
+---
+
+## `POST /tasks`
+
+Create a task. Auth required.
+
+**Request body**: `TaskInput`.
+
+**Response**: `201`, `Task`.
+
+---
+
+## `PATCH /tasks/{task_id}`
+
+Update a task — including marking it done (`completed: true` in the body). Auth required.
+
+**Request body**: `TaskInput` (the full object, same "resend everything" convention `PATCH
+/events/{event_id}` already uses — not a sparse patch).
+
+**Response**: `200`, `Task`. `404` if the id doesn't exist.
+
+---
+
+## `DELETE /tasks/{task_id}`
+
+Delete a task. Auth required.
+
+**Response**: `204`, empty body.
 
 ---
 

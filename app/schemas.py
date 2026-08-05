@@ -98,3 +98,4 @@ class Event(BaseModel):
     recurring_event_id: str | None = None
     all_day: bool = False
     is_holiday: bool = False
+    is_task: bool = False

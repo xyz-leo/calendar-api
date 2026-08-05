@@ -13,6 +13,7 @@ from app.auth import router as auth_router
 from app.database import Base, engine, get_db
 from app.events import router as events_router
 from app.rate_limit import limiter
+from app.tasks import router as tasks_router
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
@@ -62,6 +63,7 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
 app.include_router(auth_router)
 app.include_router(events_router)
+app.include_router(tasks_router)
 
 
 @app.middleware("http")

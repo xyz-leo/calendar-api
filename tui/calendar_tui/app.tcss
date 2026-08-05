@@ -275,6 +275,18 @@ EventFormScreen {
     border: round $accent;
 }
 
+#form-box Select {
+    border: round $primary;
+}
+
+#form-box Select:focus {
+    border: round $accent;
+}
+
+#form-box Checkbox {
+    margin-top: 1;
+}
+
 /* --- ConfirmScreen --- */
 
 #confirm-box {
