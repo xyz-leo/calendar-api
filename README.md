@@ -92,6 +92,33 @@ section). Full event CRUD, same as the TUI: viewing, filtering, creating, editin
 
 ---
 
+## A note on Google Tasks' due date
+
+If you use the Task side of this app (as opposed to Events), there's one Google limitation worth
+knowing about before you rely on it: **the "Deadline" field you see in Google's own apps doesn't
+exist in the API this app is built on.**
+
+When you create a task in Google's own apps (Google Calendar, the Tasks app, Gmail's task panel),
+you actually get **two** separate date options: a plain **Date** field, and an optional
+**Deadline** field underneath it. Only the plain **Date** field is exposed by the Google Tasks
+API — Google simply doesn't hand the Deadline value over to anything reading a task through the
+API, this app included. Setting a Deadline in Google's own UI has no effect here: this app can't
+see it, can't read it, can't show it.
+
+**Practical takeaway:** don't use Google's "Deadline" field at all when creating a task you want
+this app to reflect correctly — it'll be invisible here. Put the date that actually matters (the
+date you need the task done by) into the plain **Date** field instead, and treat that as the
+deadline: it's the one date Google's API actually hands over, and it's what this app shows as a
+task's "Due date." If you also want to track a separate start date for your own planning, the
+workaround is to write it into the task's notes/description by hand, e.g. `start: 08/10`.
+
+*(Short version, also shown in the app itself when viewing a task: Google's own "Deadline" field
+isn't provided by its API — only the plain Date field is. Treat that Date field as the deadline;
+it's the only date this app can see. For a separate start date, add it manually to the notes, e.g.
+"start: 08/10".)*
+
+---
+
 ## Prerequisites
 
 ### System dependencies

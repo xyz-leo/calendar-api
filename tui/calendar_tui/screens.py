@@ -809,6 +809,18 @@ _HOLIDAY_DETAIL_FIELDS = [
     ("Date", "start"),
 ]
 
+# Google's own apps show two date options when creating a task: a plain "Date" field and a
+# separate optional "Deadline" field. Only the plain Date is exposed by the Google Tasks API
+# — Deadline is never handed over to an API reader, this app included. So the due date shown
+# above is really that plain Date field, which is why users should put their deadline there
+# instead of in Google's own Deadline field. See README.md's "A note on Google Tasks' due
+# date" for the full explanation.
+_TASK_DUE_DATE_NOTE = (
+    "Note: Google's \"Deadline\" field isn't provided by its API — only the plain Date field "
+    "is. Treat the date above as the deadline; it's the only date this app can see. For a "
+    "start date, add it manually to the notes, e.g. \"start: 08/10\"."
+)
+
 
 def _detail_fields_for(event: dict) -> list[tuple[str, str]]:
     if event.get("is_holiday", False):
@@ -857,6 +869,8 @@ class EventDetailScreen(Screen):
                     f"{label}: {_detail_value(self.event, field)}",
                     classes="detail-field",
                 )
+            if self.event.get("is_task", False):
+                yield Label(_TASK_DUE_DATE_NOTE, id="detail-task-note")
         yield _footer()
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:

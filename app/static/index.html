@@ -300,6 +300,7 @@
   .detail-box { max-width: 480px; }
   .detail-title { margin: 0 0 0.75rem; color: var(--accent); font-size: clamp(1rem, 3vw, 1.2rem); text-align: center; }
   .detail-holiday-badge { text-align: center; color: var(--holiday); margin-bottom: 0.75rem; font-size: 0.85rem; }
+  .detail-task-note { color: var(--secondary); font-style: italic; font-size: 0.8rem; margin-top: 0.5rem; }
   .detail-field { padding: 0.35rem 0; font-size: clamp(0.85rem, 2.2vw, 0.95rem); line-height: 1.5; }
   .detail-field-label { color: var(--accent); font-weight: 700; }
 
@@ -981,6 +982,16 @@
     ["Description", "description"], ["Date", "start"],
   ];
 
+  // Google's own apps show two date options when creating a task: a plain "Date" field and a
+  // separate optional "Deadline" field. Only the plain Date is exposed by the Google Tasks
+  // API — Deadline is never handed over to an API reader, this app included. So the due date
+  // shown above is really that plain Date field, which is why users should put their deadline
+  // there instead of in Google's own Deadline field. See README.md's "A note on Google Tasks'
+  // due date" for the full explanation.
+  const TASK_DUE_DATE_NOTE = "Note: Google's \"Deadline\" field isn't provided by its API — "
+    + "only the plain Date field is. Treat the date above as the deadline; it's the only date "
+    + "this app can see. For a start date, add it manually to the notes, e.g. \"start: 08/10\".";
+
   // No separate "All day" row at all — an all-day event is already unambiguous from
   // showing one renamed "Date" row and no End; a timed event is already unambiguous from
   // showing both Start and End. The boolean would only ever repeat information the other
@@ -1028,6 +1039,9 @@
       row.appendChild(el("span", "detail-field-value", detailValue(event, field)));
       box.appendChild(row);
     });
+    if (event.is_task) {
+      box.appendChild(el("div", "detail-task-note", TASK_DUE_DATE_NOTE));
+    }
     if (!event.is_holiday) {
       const actions = el("div", "detail-actions");
       actions.appendChild(navButton("u", "Update", () => openEventForm(event)));
