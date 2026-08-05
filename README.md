@@ -64,6 +64,22 @@ That's the entire client-side setup — no Docker, no Google Cloud project *on y
 of the steps below (the Google Cloud project step still has to have happened somewhere, by
 someone, for whichever instance you're pointing at).
 
+### TUI Screenshots
+
+#### Agenda View
+
+<img width="300" height="350" alt="calendar-tui_agenda" src="https://github.com/user-attachments/assets/3977ba81-4e30-4a90-92fb-18257fab8d24" />
+
+<img width="300" height="350" alt="calendar-tui_agenda-theme" src="https://github.com/user-attachments/assets/709134cd-f127-49c3-b30a-27c40391629b" />
+
+#### Event and Task Creation
+
+<img width="300" height="350" alt="calendar-tui_newevent" src="https://github.com/user-attachments/assets/a25de9a7-beb5-4551-b6f3-e47c87c507b6" />
+
+#### Event and Task View
+
+<img width="300" height="350" alt="calendar-tui_event" src="https://github.com/user-attachments/assets/03afa9c0-5235-4840-a1ac-e3025e0c34cd" />
+
 ---
 
 ## Just want the web client?
