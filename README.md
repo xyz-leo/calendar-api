@@ -195,9 +195,10 @@ specifically on `/auth/login`/`/auth/callback`) — both are per-client-IP reque
 There are two `docker-compose` files — which one you want depends on what you're doing:
 
 - **`docker-compose.dev.yml`** — local development. Use this one.
-- **`docker-compose.yml`** (no `-f` flag needed) — production. Expects an external `shared_proxy`
-  Docker network and a reverse proxy in front of it; not something a fresh local clone has set up,
-  so don't reach for this unless you're actually deploying.
+- **`docker-compose.yml`** (no `-f` flag needed) — production. Publishes no ports: it expects an
+  external `proxy` Docker network (`docker network create proxy`) with a reverse proxy container on
+  it that forwards to `calendar-api:8000`. Not something a fresh local clone has set up, so don't
+  reach for this unless you're actually deploying.
 
 ```bash
 docker compose -f docker-compose.dev.yml up --build -d
@@ -230,6 +231,21 @@ docker compose -f docker-compose.dev.yml down
 
 The SQLite database file lives under `./data`, mounted into the container so it survives restarts
 and rebuilds.
+
+### Production
+
+Behind a reverse proxy on the same Docker host:
+
+1. Once per server: `docker network create proxy`, and a reverse proxy container on that network.
+2. `cp .env.example .env` and fill it in. `GOOGLE_REDIRECT_URI` must be
+   `https://<your-domain>/auth/callback`, registered in the Google Console like the dev one.
+3. `docker compose up --build -d`
+4. Point the proxy at `calendar-api:8000`. With Caddy:
+   ```
+   calendar-api.example.com {
+   	reverse_proxy calendar-api:8000
+   }
+   ```
 
 ### Adding a dependency
 

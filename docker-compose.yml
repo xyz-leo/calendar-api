@@ -5,16 +5,14 @@ services:
   api:
     build: .
     # Fixed name, not the default "calendar-api-api-1" — this is the exact
-    # name furikaeri's Caddyfile targets (`reverse_proxy calendar-api:8000`)
-    # over the shared_proxy network below. Also happens to avoid any clash
-    # with another project's own same-named service sharing that network.
+    # name the reverse proxy targets (`reverse_proxy calendar-api:8000`)
+    # over the `proxy` network below. Also avoids any clash with another
+    # project's same-named service sharing that network.
+    #
+    # No published ports: the reverse proxy is the only way in. To poke at
+    # it from the VPS itself, go through the public URL, or
+    # `docker compose exec api python -c "import urllib.request; print(urllib.request.urlopen('http://localhost:8000/health').read())"`.
     container_name: calendar-api
-    ports:
-      # Loopback-only: reachable at localhost:8088 on this machine (useful
-      # for debugging directly on the VPS over SSH), never on the machine's
-      # public interface. The public route is furikaeri's Caddy, reaching
-      # this container over shared_proxy below — not through this port.
-      - "127.0.0.1:8088:8000"
     env_file:
       - .env
     volumes:
@@ -26,11 +24,11 @@ services:
     restart: unless-stopped
     networks:
       - default
-      - shared_proxy
+      - proxy
 
-# Created once, by hand, on the VPS (docker network create shared_proxy) —
-# this file only ever attaches to it, never creates or owns it. See
-# ~/Documents/calendar-api-source/deployment.md for the full explanation.
+# Created once, by hand, on the VPS (docker network create proxy) — this
+# file only ever attaches to it, never creates or owns it. The reverse
+# proxy container joins the same network.
 networks:
-  shared_proxy:
+  proxy:
     external: true
